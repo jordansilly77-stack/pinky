@@ -105,7 +105,9 @@ func usage() {
 
 commands:
   devices                         list phones
-  observe [-json]                 print the screen as agents read it
+  observe [-json] [-ocr] [-all]   print the screen as agents read it; -ocr adds
+                                  text the tree misses over web views and
+                                  canvases (from a screenshot), -all all of it
   screenshot FILE.png             save a screenshot
   tap X Y [-long]                 tap, or long-press with -long
   swipe X1 Y1 X2 Y2 [MS]          swipe (default 300 ms)
@@ -178,8 +180,10 @@ func run(ctx context.Context, p *android.Provider, serial, cmd string, args []st
 	case "observe":
 		fs := flag.NewFlagSet("observe", flag.ExitOnError)
 		asJSON := fs.Bool("json", false, "print JSON")
+		withOCR := fs.Bool("ocr", false, "add OCR text where the tree misses it")
+		all := fs.Bool("all", false, "with -ocr, all the text the tree does not show")
 		fs.Parse(args)
-		return observe(ctx, d, *asJSON)
+		return observe(ctx, d, *asJSON, driver.ObserveOptions{OCR: *withOCR || *all, OCRAll: *all})
 	case "screenshot":
 		if len(args) != 1 {
 			return errors.New("usage: screenshot FILE.png")
@@ -429,13 +433,16 @@ func devices(ctx context.Context, p *android.Provider) error {
 	return nil
 }
 
-func observe(ctx context.Context, d *android.Device, asJSON bool) error {
+func observe(ctx context.Context, d *android.Device, asJSON bool, opt driver.ObserveOptions) error {
 	start := time.Now()
-	s, err := d.Observe(ctx, driver.ObserveOptions{})
+	s, st, err := d.ObserveWithText(ctx, opt)
 	if err != nil {
 		return err
 	}
 	took := time.Since(start)
+	if opt.OCR || st.Areas > 0 {
+		fmt.Fprintf(os.Stderr, "(OCR: %d areas the tree misses; %s)\n", st.Areas, textSummary(st))
+	}
 	screen.NewRefs().Assign(s)
 	redact(s)
 	if asJSON {
@@ -446,6 +453,18 @@ func observe(ctx context.Context, d *android.Device, asJSON bool) error {
 	fmt.Println(s.Render())
 	fmt.Fprintf(os.Stderr, "(%d elements in %v)\n", len(s.Elements), took.Round(time.Millisecond))
 	return nil
+}
+
+// textSummary says what a read did about OCR.
+func textSummary(st android.TextStats) string {
+	switch {
+	case st.Err != nil:
+		return "failed: " + st.Err.Error()
+	case st.Skipped != "":
+		return "not run: " + st.Skipped
+	}
+	return fmt.Sprintf("%d lines from the %s, %d added; capture %v, OCR %v", st.Lines, st.From, st.Added,
+		st.Capture.Round(time.Millisecond), st.OCR.Round(time.Millisecond))
 }
 
 func screenshot(ctx context.Context, d driver.Device, path string) error {

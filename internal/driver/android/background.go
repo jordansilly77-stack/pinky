@@ -356,14 +356,44 @@ func (b *Background) Info() driver.Info {
 // Observe implements driver.Device through the companion app, which reads
 // any display; uiautomator reads only the main one, so without the
 // companion this returns driver.ErrUnsupported.
-func (b *Background) Observe(ctx context.Context, _ driver.ObserveOptions) (*screen.Screen, error) {
+func (b *Background) Observe(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, error) {
+	s, _, err := b.ObserveWithText(ctx, opt)
+	return s, err
+}
+
+// ObserveWithText is Observe with what it did about OCR, which reads a
+// frame of the display's video: screencap cannot capture a virtual
+// display.
+func (b *Background) ObserveWithText(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, TextStats, error) {
+	since := time.Now()
+	s, t, err := b.observeTree(ctx)
+	if err != nil {
+		return nil, TextStats{}, err
+	}
+	st := addText(ctx, s, scanCompanion(t), opt, since, textSource{
+		frame: opt.Frame,
+		moved: func(_ context.Context, since time.Time, _ screen.App) bool {
+			changed, ok := b.d.comp.windowSince(b.display, since)
+			return changed || !ok
+		},
+	})
+	b.d.textLog.note(b.d.cfg.logf, b.d.info.ID, st)
+	return s, st, nil
+}
+
+// ReadsText implements driver.TextReader.
+func (b *Background) ReadsText() bool { return ocrSupported() == nil }
+
+// observeTree reads the display's tree through the companion. The tree is
+// nil for a display that shows nothing yet.
+func (b *Background) observeTree(ctx context.Context) (*screen.Screen, *companion.Tree, error) {
 	b.d.used()
 	if err := b.ready(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c := b.d.companionClientFor(ctx, forBackground)
 	if c == nil {
-		return nil, fmt.Errorf("android: observing a virtual display needs the companion app: %w", driver.ErrUnsupported)
+		return nil, nil, fmt.Errorf("android: observing a virtual display needs the companion app: %w", driver.ErrUnsupported)
 	}
 	t, err := c.Dump(ctx, companion.DumpOptions{Display: b.display})
 	if err != nil && ctx.Err() == nil && !errors.Is(err, driver.ErrUnsupported) {
@@ -377,12 +407,13 @@ func (b *Background) Observe(ctx context.Context, _ driver.ObserveOptions) (*scr
 	}
 	if err != nil {
 		if !b.started.Load() && errors.Is(err, driver.ErrUnsupported) && ctx.Err() == nil {
-			return b.emptyScreen(ctx)
+			s, err := b.emptyScreen(ctx)
+			return s, nil, err
 		}
 		if ctx.Err() == nil {
 			b.d.companionFailed(err)
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	s := t.Screen(companion.ScreenOptions{})
 	s.CapturedAt = c.HostTime(t.Time)
@@ -390,7 +421,7 @@ func (b *Background) Observe(ctx context.Context, _ driver.ObserveOptions) (*scr
 	// The phone's lock screen is on the main display; from Android 13 the
 	// virtual display is always unlocked.
 	s.Locked = t.Locked && !b.d.alwaysUnlocked()
-	return s, nil
+	return s, t, nil
 }
 
 // Screenshot implements driver.Device with `screencap -d`.

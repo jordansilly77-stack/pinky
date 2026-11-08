@@ -142,12 +142,30 @@ type Device interface {
 // ObserveOptions tune Observe.
 type ObserveOptions struct {
 	// OCR asks the driver to add OCR elements for areas the tree misses.
+	// A driver may find that its tree misses nothing and read no pixels:
+	// Android reads by OCR only where the tree is empty or sparse over a
+	// web view or a canvas, unless OCRAll is set as well.
 	OCR bool
+	// OCRAll, with OCR, asks for OCR elements for all the text the tree
+	// does not show, however complete the tree looks: the agent asked for
+	// the screen's text, or the gateway checks the text under a finger.
+	// Drivers that read every OCR read this way (iOS) ignore it.
+	OCRAll bool
 	// Frame, when set, returns a picture of the screen decoded from its
 	// live video, which the gateway shares with the mirror. A driver may
 	// read OCR's text from it where its own screenshots are slow (an
-	// iPhone over Wi-Fi: about 5 s a screenshot); nil means none.
+	// iPhone over Wi-Fi: about 5 s a screenshot; an Android background
+	// display, which has none); nil means none.
 	Frame func(ctx context.Context) (image.Image, error)
+	// MayCapture, when set, reports whether the driver may capture the
+	// screen it read, as a screenshot or a frame of the video kept in
+	// memory only, to read its text by OCR: the gateway takes no pictures
+	// of a blocked app or a locked phone. A driver that reads the tree
+	// first (Android) asks it with the screen as read, before it
+	// captures, and adds no OCR elements when it may not. nil means it
+	// may. The iOS driver captures while it reads the tree, so it does
+	// not ask.
+	MayCapture func(s *screen.Screen) bool
 }
 
 // TapOptions tune Tap.
@@ -255,6 +273,15 @@ type PersonWatcher interface {
 // LockReporter reports whether the phone is locked.
 type LockReporter interface {
 	Locked(ctx context.Context) (bool, error)
+}
+
+// TextReader is a Device that can read text from the screen's pixels (OCR)
+// on this computer when ObserveOptions asks it to, also on screens where
+// it has not done so yet. The gateway then checks a tap on a spot the tree
+// says little about against the text there (an image button that shows
+// "Pay"), before any read has returned OCR elements.
+type TextReader interface {
+	ReadsText() bool
 }
 
 // Clipboard reads and writes the phone's clipboard.

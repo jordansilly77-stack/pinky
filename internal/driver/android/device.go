@@ -64,8 +64,9 @@ type Device struct {
 	appsAt      time.Time
 	appsLoading atomic.Bool
 
-	comp   companionLink
-	person personWatch
+	comp    companionLink
+	person  personWatch
+	textLog textLog // OCR failures, logged once until they change
 	// compRun, set by tests, stands in for adb in the companion's clients.
 	compRun companion.Runner
 

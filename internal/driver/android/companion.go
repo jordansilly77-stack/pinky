@@ -82,8 +82,11 @@ type companionLink struct {
 
 	evMu   sync.Mutex
 	lastAt map[int]time.Time // arrival of the last window or content event, by display (-1: unknown)
-	events []screen.Event    // toasts and notifications since the last Observe
-	live   bool              // the subscription is delivering
+	// windowAt is the arrival of the last window event (a new activity,
+	// dialog or pane), by display (-1: unknown or dropped events).
+	windowAt map[int]time.Time
+	events   []screen.Event // toasts and notifications since the last Observe
+	live     bool           // the subscription is delivering
 }
 
 // companionUse is what a caller wants the companion for.
@@ -259,6 +262,8 @@ func (d *Device) AgentWorking(on bool) {
 	}
 	if on {
 		go d.warmCompanion()
+		// The task's first read may need OCR: load its models meanwhile.
+		ocrWarm()
 	} else {
 		go d.restCompanion(first)
 	}
@@ -351,6 +356,7 @@ func (d *Device) subscribeLocked() error {
 	k.live = true
 	k.events = nil
 	k.lastAt = map[int]time.Time{}
+	k.windowAt = map[int]time.Time{}
 	k.evMu.Unlock()
 	go d.readCompanionEvents(sub)
 	return nil
@@ -366,6 +372,10 @@ func (d *Device) readCompanionEvents(sub *companion.Subscription) {
 			k.lastAt[ev.Display] = now
 		case companion.EventDropped:
 			k.lastAt[-1] = now
+			k.windowAt[-1] = now
+		}
+		if ev.Kind == companion.EventWindow {
+			k.windowAt[ev.Display] = now
 		}
 		if se, ok := ev.ScreenEvent(); ok {
 			k.events = append(k.events, se)
@@ -403,6 +413,18 @@ func (k *companionLink) lastChange(display int) (time.Time, bool) {
 		last = u
 	}
 	return last, k.live
+}
+
+// windowSince reports whether a window event (another activity, a dialog)
+// arrived on a display, or one whose display is not known, after t; ok is
+// false when no subscription is delivering.
+func (k *companionLink) windowSince(display int, t time.Time) (changed, ok bool) {
+	k.evMu.Lock()
+	defer k.evMu.Unlock()
+	if !k.live {
+		return false, false
+	}
+	return k.windowAt[display].After(t) || k.windowAt[-1].After(t), true
 }
 
 // displays reports whether the app on the phone takes displays other than
@@ -558,7 +580,7 @@ var _ driver.WorkWatcher = (*Device)(nil)
 // keyboard state from the window manager as the uiautomator path has them.
 // The two dumpsys queries run as separate shells, in parallel with the
 // tree: in one shell they took about 85 ms, the tree about 30.
-func (d *Device) observeCompanion(ctx context.Context, c *companion.Client) (*screen.Screen, error) {
+func (d *Device) observeCompanion(ctx context.Context, c *companion.Client) (*screen.Screen, textScan, error) {
 	run := func(cmd string) <-chan string {
 		ch := make(chan string, 1)
 		go func() {
@@ -574,8 +596,9 @@ func (d *Device) observeCompanion(ctx context.Context, c *companion.Client) (*sc
 	t, err := c.Dump(ctx, companion.DumpOptions{})
 	keyguard, ime := <-keyguardc, <-imec
 	if err != nil {
-		return nil, err
+		return nil, textScan{}, err
 	}
+	read := t
 	s := t.Screen(companion.ScreenOptions{})
 	s.CapturedAt = c.HostTime(t.Time)
 	if locked, ok := parseKeyguard(keyguard); ok {
@@ -592,13 +615,13 @@ func (d *Device) observeCompanion(ctx context.Context, c *companion.Client) (*sc
 			if s2 := t2.Screen(companion.ScreenOptions{Keyboard: true}); len(s2.Elements) > 0 {
 				s2.CapturedAt = c.HostTime(t2.Time)
 				s2.Locked, s2.Keyboard = s.Locked, s.Keyboard
-				s = s2
+				s, read = s2, t2
 			}
 		}
 	}
 	s.App.Name = d.companionAppName(s.App)
 	s.Events = d.comp.takeEvents()
-	return s, nil
+	return s, scanCompanion(read), nil
 }
 
 // companionAppName names the foreground app from the driver's app list,

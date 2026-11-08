@@ -29,25 +29,77 @@ const (
 // otherwise from `uiautomator dump` (about 2.2 s, most of it uiautomator
 // waiting for the UI to idle). Either way the lock and keyboard state come
 // from the window manager, in parallel. Element bounds use the
-// screenshot's pixel space. OCR is not done here; opt.OCR is ignored.
+// screenshot's pixel space. With opt.OCR, text the tree misses over a web
+// view or a canvas is read from the pixels too (text.go).
 func (d *Device) Observe(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, error) {
+	s, _, err := d.ObserveWithText(ctx, opt)
+	return s, err
+}
+
+// ObserveWithText is Observe with what it did about OCR.
+func (d *Device) ObserveWithText(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, TextStats, error) {
 	d.used()
+	since := time.Now()
+	s, sc, err := d.observeTree(ctx)
+	if err != nil {
+		return nil, TextStats{}, err
+	}
+	src := textSource{
+		shot:  func(ctx context.Context) ([]byte, error) { return d.screencap(ctx, "screencap -p") },
+		moved: d.movedSince(0),
+	}
+	if d.info.Connection != "usb" {
+		// Over Wi-Fi a screenshot's PNG (1 to 2 MB) takes seconds to come,
+		// and tens of seconds over a phone's mobile uplink; a frame of the
+		// video costs a key frame. Over USB a screenshot is the cheaper
+		// one: a frame waits for the encoder to restart when no mirror is
+		// open (1.1 to 1.5 s on an emulator, against 0.13 s for screencap).
+		src.frame = opt.Frame
+	}
+	st := addText(ctx, s, sc, opt, since, src)
+	d.textLog.note(d.cfg.logf, d.info.ID, st)
+	return s, st, nil
+}
+
+// observeTree reads the tree, and what it says about where text is
+// missing.
+func (d *Device) observeTree(ctx context.Context) (*screen.Screen, textScan, error) {
 	if c := d.companionClient(ctx); c != nil {
-		s, err := d.observeCompanion(ctx, c)
+		s, sc, err := d.observeCompanion(ctx, c)
 		if err == nil && emptyWithKeyboard(s) {
 			err = errEmptyTree
 		}
 		if err == nil {
-			return s, nil
+			return s, sc, nil
 		}
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, textScan{}, ctx.Err()
 		}
 		// Turn it off before uiautomator runs, and fall back.
 		d.companionFailed(err)
 	}
 	return d.observeDump(ctx)
 }
+
+// movedSince returns textSource.moved for a display: whether a window
+// event came since the tree was read, from the companion's events, or
+// without them whether the window manager's focused app is another one.
+func (d *Device) movedSince(display int) func(ctx context.Context, since time.Time, app screen.App) bool {
+	return func(ctx context.Context, since time.Time, app screen.App) bool {
+		if changed, ok := d.comp.windowSince(display, since); ok {
+			return changed
+		}
+		out, err := d.client.Shell(ctx, d.info.ID, "dumpsys window displays | grep -E 'mFocusedApp='")
+		if err != nil {
+			return false
+		}
+		pkg := parseFocusedApp(string(out))
+		return pkg != "" && app.ID != "" && pkg != app.ID
+	}
+}
+
+// ReadsText implements driver.TextReader: this computer has a recognizer.
+func (d *Device) ReadsText() bool { return ocrSupported() == nil }
 
 // errEmptyTree is a companion tree with no elements while an app shows the
 // keyboard, even with the keyboard's own nodes: the read missed something,
@@ -61,7 +113,7 @@ func emptyWithKeyboard(s *screen.Screen) bool {
 }
 
 // observeDump reads the screen with `uiautomator dump`.
-func (d *Device) observeDump(ctx context.Context) (*screen.Screen, error) {
+func (d *Device) observeDump(ctx context.Context) (*screen.Screen, textScan, error) {
 	captured := time.Now()
 	type dumpResult struct {
 		tree *uiTree
@@ -88,13 +140,13 @@ func (d *Device) observeDump(ctx context.Context) (*screen.Screen, error) {
 
 	natW, natH, err := d.naturalSize(ctx)
 	if err != nil {
-		return nil, err
+		return nil, textScan{}, err
 	}
 	r := <-dumpc
 	stateOut := <-statec
 	<-appsc
 	if r.err != nil {
-		return nil, r.err
+		return nil, textScan{}, r.err
 	}
 	w, h := rotate(natW, natH, r.tree.Rotation)
 	sec := splitSections(stateOut)
@@ -113,7 +165,7 @@ func (d *Device) observeDump(ctx context.Context) (*screen.Screen, error) {
 	}
 	pkg := r.tree.Package()
 	scr.App = screen.App{ID: pkg, Name: d.appName(pkg)}
-	return scr, nil
+	return scr, scanDump(r.tree, w, h), nil
 }
 
 // dumpUI runs `uiautomator dump`, writing to /dev/tty so the XML comes back
@@ -180,15 +232,27 @@ func firstLine(out []byte) string {
 // pixel space as Observe.
 func (d *Device) Screenshot(ctx context.Context) (image.Image, error) {
 	d.used()
-	out, err := d.client.Exec(ctx, d.info.ID, "screencap -p")
+	out, err := d.screencap(ctx, "screencap -p")
 	if err != nil {
-		return nil, wrapErr(err)
+		return nil, err
 	}
 	img, err := png.Decode(bytes.NewReader(out))
 	if err != nil {
 		return nil, fmt.Errorf("android: screencap: %v (%d bytes: %q)", err, len(out), firstLine(out))
 	}
 	return img, nil
+}
+
+// screencap runs a screencap command and returns its PNG.
+func (d *Device) screencap(ctx context.Context, cmd string) ([]byte, error) {
+	out, err := d.client.Exec(ctx, d.info.ID, cmd)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	if !bytes.HasPrefix(out, []byte("\x89PNG")) {
+		return nil, fmt.Errorf("android: screencap: no PNG (%d bytes: %q)", len(out), firstLine(out))
+	}
+	return out, nil
 }
 
 // Locked implements driver.LockReporter: true while the lock screen is
