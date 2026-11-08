@@ -17,22 +17,25 @@ import (
 // custom view reports android.view.View or the layout it extends. So an
 // area counts when it is
 //
-//   - a web view with fewer than webMinLabels labelled nodes in it, or
-//     whose labelled nodes cover less than webMinCover of it;
+//   - a web view, at least webMinArea of the screen;
 //   - a view with nothing in it (a leaf) that is not an image, a field or
 //     a list and has no text, at least canvasMinArea of the screen: a
 //     canvas, a surface, a Flutter view without semantics, Chrome's page
 //     when it exposes none of it (a FrameLayout described "Web View"). A
 //     description names such an area; it is not its text;
-//   - an application window with fewer than windowMinLabels labelled
-//     nodes in all of it, at least canvasMinArea of the screen.
+//
+// and the window's labelled nodes over it, its own or drawn on top of it,
+// are fewer than minLabels or cover less than minCover of it: a
+// launcher's full-screen backdrop has its icons over it, a game's canvas
+// a score or two. And an application window counts, at least
+// canvasMinArea of the screen, with fewer than minLabels labelled nodes
+// in all of it.
 const (
-	webMinArea      = 1.0 / 8 // of the screen, for a web view to count
-	webMinLabels    = 3
-	webMinCover     = 0.2
-	canvasMinArea   = 1.0 / 6 // of the screen
-	windowMinLabels = 3
-	coverCells      = 32 // grid cells along a web view's longer side, for its cover
+	webMinArea    = 1.0 / 8 // of the screen, for a web view to count
+	canvasMinArea = 1.0 / 6 // of the screen
+	minLabels     = 3
+	minCover      = 0.2
+	coverCells    = 32 // grid cells along an area's longer side, for its cover
 )
 
 // textNode is a node of either tree, the companion's or uiautomator's, as
@@ -114,7 +117,8 @@ func scanWindows(windows []textWindow, w, h int) textScan {
 }
 
 func scanWindow(win textWindow, clip screen.Rect, screenArea float64, above []screen.Rect) []textArea {
-	if labels := countLabelled(win.root, clip, nil); labels < windowMinLabels && rectArea(clip) >= canvasMinArea*screenArea {
+	labelled := labelledIn(win.root, clip)
+	if len(labelled) < minLabels && rectArea(clip) >= canvasMinArea*screenArea {
 		return []textArea{{rect: clip, above: above, kind: "window", path: win.prefix}}
 	}
 	var out []textArea
@@ -127,12 +131,13 @@ func scanWindow(win textWindow, clip screen.Rect, screenArea float64, above []sc
 			// Off screen; its children may still show (a scrolled list's
 			// container can report odd bounds), so go on.
 		case isWebClass(n.class):
-			if rectArea(vis) >= webMinArea*screenArea && sparseWeb(n, vis) {
+			if rectArea(vis) >= webMinArea*screenArea && sparse(n, vis, labelled) {
 				out = append(out, textArea{rect: vis, above: above, kind: "web", path: self, id: n.id})
 			}
 			return // its insides belong to the page
 		case len(visibleKids(n, clip)) == 0:
-			if !n.text && !n.editable && !n.list && !isImageClass(n.class) && rectArea(vis) >= canvasMinArea*screenArea {
+			if !n.text && !n.editable && !n.list && !isImageClass(n.class) && rectArea(vis) >= canvasMinArea*screenArea &&
+				sparse(n, vis, labelled) {
 				out = append(out, textArea{rect: vis, above: above, kind: "canvas", path: self, id: n.id})
 			}
 			return
@@ -145,39 +150,64 @@ func scanWindow(win textWindow, clip screen.Rect, screenArea float64, above []sc
 	return out
 }
 
-// sparseWeb reports whether a web view's labelled nodes are too few, or
-// cover too little of what shows of it (vis), for its page to be read
-// from the tree. The web view's own label (a page title) and labelled
-// nodes that span half of it or more (a container with an aria-label)
-// say nothing about where its text is, so they do not cover it.
-func sparseWeb(n *textNode, vis screen.Rect) bool {
-	var labelled []screen.Rect
-	count := 0
-	for _, k := range n.kids {
-		count += countLabelled(k, vis, &labelled)
-	}
-	if count < webMinLabels {
-		return true
-	}
-	half := rectArea(vis) / 2
-	small := labelled[:0]
-	for _, r := range labelled {
-		if rectArea(r) < half {
-			small = append(small, r)
+// labelledNode is a labelled node's visible bounds.
+type labelledNode struct {
+	n   *textNode
+	vis screen.Rect
+}
+
+// labelledIn collects the labelled nodes of a window whose middle shows in
+// clip.
+func labelledIn(root *textNode, clip screen.Rect) []labelledNode {
+	var out []labelledNode
+	var walk func(m *textNode)
+	walk = func(m *textNode) {
+		if m.labelled {
+			if vis := intersect(m.bounds, clip); !vis.Empty() && clip.Contains(m.bounds.Center()) {
+				out = append(out, labelledNode{m, vis})
+			}
+		}
+		for _, k := range m.kids {
+			walk(k)
 		}
 	}
-	labelled = small
+	walk(root)
+	return out
+}
+
+// sparse reports whether the window's labelled nodes over an area (vis of
+// node n) are too few, or cover too little of it, for its text to be read
+// from the tree. n's own label (a web view's page title, "Web View") and
+// labelled nodes that span half of the area or more (a container with an
+// aria-label, a screen-wide backdrop) say nothing about where its text
+// is, so they do not cover it.
+func sparse(n *textNode, vis screen.Rect, labelled []labelledNode) bool {
+	half := rectArea(vis) / 2
+	var over []screen.Rect
+	count := 0
+	for _, l := range labelled {
+		if l.n == n || !vis.Contains(l.vis.Center()) {
+			continue
+		}
+		count++
+		if r := intersect(l.vis, vis); rectArea(r) < half {
+			over = append(over, r)
+		}
+	}
+	if count < minLabels {
+		return true
+	}
 	// Cover on a grid: which cells' middles lie in a labelled node. It
 	// stops once enough are covered.
 	step := max(1, max(vis.W, vis.H)/coverCells)
 	cols := (vis.W + step - 1 - step/2) / step
 	rows := (vis.H + step - 1 - step/2) / step
-	need := webMinCover * float64(cols*rows)
+	need := minCover * float64(cols*rows)
 	covered := 0
 	for y := vis.Y + step/2; y < vis.Y+vis.H; y += step {
 		for x := vis.X + step/2; x < vis.X+vis.W; x += step {
 			p := screen.Point{X: x, Y: y}
-			for _, r := range labelled {
+			for _, r := range over {
 				if r.Contains(p) {
 					covered++
 					break
@@ -189,29 +219,6 @@ func sparseWeb(n *textNode, vis screen.Rect) bool {
 		}
 	}
 	return true
-}
-
-// countLabelled counts the labelled nodes of n's subtree, n included,
-// whose middle shows in clip, and collects their visible bounds when out
-// is set.
-func countLabelled(n *textNode, clip screen.Rect, out *[]screen.Rect) int {
-	count := 0
-	var walk func(m *textNode)
-	walk = func(m *textNode) {
-		if m.labelled {
-			if vis := intersect(m.bounds, clip); !vis.Empty() && clip.Contains(m.bounds.Center()) {
-				count++
-				if out != nil {
-					*out = append(*out, vis)
-				}
-			}
-		}
-		for _, k := range m.kids {
-			walk(k)
-		}
-	}
-	walk(n)
-	return count
 }
 
 func visibleKids(n *textNode, clip screen.Rect) []*textNode {

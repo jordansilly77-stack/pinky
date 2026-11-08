@@ -134,6 +134,17 @@ func TestScanCanvas(t *testing.T) {
 	if sc := scanCompanion(appTree(node("android.widget.FrameLayout", 0, 0, scrW, scrH, header(), article), false)); len(sc.areas) != 0 {
 		t.Errorf("a text view gave areas %+v", sc.areas)
 	}
+	// A launcher's backdrop: a full-screen leaf with the icons drawn over
+	// it is not a canvas; a game's surface with a few small labels is.
+	backdrop := node("android.view.View", 0, 100, scrW, scrH)
+	icons := []*companion.Node{backdrop}
+	for i := 0; i < 20; i++ {
+		x, y := (i%4)*270, 200+(i/4)*400
+		icons = append(icons, text(fmt.Sprintf("App %d", i), x, y, x+270, y+330))
+	}
+	if sc := scanCompanion(appTree(node("android.widget.FrameLayout", 0, 0, scrW, scrH, icons...), false)); len(sc.areas) != 0 {
+		t.Errorf("a launcher gave areas %+v", sc.areas)
+	}
 	// A small custom view is not either.
 	small := node("android.view.View", 0, 300, 400, 600)
 	if sc := scanCompanion(appTree(node("android.widget.FrameLayout", 0, 0, scrW, scrH, header(), small), false)); len(sc.areas) != 0 {
