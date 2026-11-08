@@ -1,9 +1,10 @@
 //go:build darwin
 
-package ios
+package ocr
 
 import (
 	"fmt"
+	"image"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -107,10 +108,21 @@ func goString(p uintptr) string {
 	return string(unsafe.Slice((*byte)(ptr), n))
 }
 
-// recognizeText runs Vision's text recognizer on an encoded image (PNG or
-// JPEG) and returns the lines it read, with boxes normalized to 0..1 from
-// the top-left corner.
-func recognizeText(img []byte, opt ocrOptions) ([]ocrLine, error) {
+func supported() error { return loadVision() }
+
+// recognizeImage hands Vision the picture as an uncompressed BMP, which
+// costs far less to make than a PNG or JPEG and to read back.
+func recognizeImage(img image.Image, opt Options) ([]Line, error) {
+	if img == nil || img.Bounds().Empty() {
+		return nil, fmt.Errorf("ocr: empty image")
+	}
+	return recognize(encodeBMP(img), opt)
+}
+
+// recognize runs Vision's text recognizer on an encoded image (PNG, JPEG
+// or BMP) and returns the lines it read, with boxes normalized to 0..1
+// from the top-left corner.
+func recognize(img []byte, opt Options) ([]Line, error) {
 	if err := loadVision(); err != nil {
 		return nil, err
 	}
@@ -160,7 +172,7 @@ func recognizeText(img []byte, opt ocrOptions) ([]ocrLine, error) {
 		return nil, nil
 	}
 	n := objc.Send[uint64](res, v.count)
-	out := make([]ocrLine, 0, n)
+	out := make([]Line, 0, n)
 	for i := uint64(0); i < n; i++ {
 		obs := res.Send(v.objectAtIndex, i)
 		cands := obs.Send(v.topCandidates, uint64(1))
@@ -171,7 +183,7 @@ func recognizeText(img []byte, opt ocrOptions) ([]ocrLine, error) {
 		text := goString(objc.Send[uintptr](top.Send(v.str), v.utf8))
 		conf := objc.Send[float32](top, v.confidence)
 		bb := objc.Send[cgRect](obs, v.boundingBox)
-		out = append(out, ocrLine{
+		out = append(out, Line{
 			Text:       text,
 			Confidence: conf,
 			// Vision's origin is the bottom-left corner.

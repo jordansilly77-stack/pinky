@@ -355,29 +355,6 @@ func (d *Device) appForPID(ctx context.Context, pid uint64) (driver.App, bool) {
 // pidRecheck is how long a process that is no app is not looked up again.
 const pidRecheck = 30 * time.Second
 
-// keyboardFromOCR finds an on-screen keyboard in OCR lines: at least five
-// single letters in the lower half of the screen, spread across most of its
-// width (a list's section index is a column of single letters too). It
-// returns the keyboard's top edge, normalized.
-func keyboardFromOCR(lines []ocrLine) (float64, bool) {
-	top, n := 1.0, 0
-	left, right := 1.0, 0.0
-	for _, l := range lines {
-		t := []rune(strings.TrimSpace(l.Text))
-		if l.Y < 0.5 || len(t) != 1 || !unicode.IsLetter(t[0]) {
-			continue
-		}
-		n++
-		top = min(top, l.Y)
-		left = min(left, l.X)
-		right = max(right, l.X+l.W)
-	}
-	if n < 5 || right-left < 0.5 {
-		return 0, false
-	}
-	return top - 0.02, true
-}
-
 // ownerPID is the process that owns most of the walked elements: the app
 // on screen.
 func ownerPID(nodes []axNode) uint64 {
@@ -396,22 +373,12 @@ func ownerPID(nodes []axNode) uint64 {
 	return best
 }
 
-// ocrLanguages are the languages Vision reads, in priority order.
-var ocrLanguages = []string{"zh-Hans", "zh-Hant", "en-US"}
-
 func orientationName(rot string) string {
 	switch rot {
 	case "rot90", "rot270":
 		return "landscape"
 	default:
 		return "portrait"
-	}
-}
-
-func ocrRect(l ocrLine, w, h int) screen.Rect {
-	return screen.Rect{
-		X: int(l.X * float64(w)), Y: int(l.Y * float64(h)),
-		W: int(l.W * float64(w)), H: int(l.H * float64(h)),
 	}
 }
 
