@@ -1744,13 +1744,27 @@ func (g *Gateway) observeOCR(ctx context.Context, d *device, mode readOCR) (*scr
 }
 
 // mayCapture reports whether a driver may capture a screen it read, to
-// read its text by OCR (driver.ObserveOptions.MayCapture): as for every
-// picture Pinky takes, not of a locked phone, whose lock screen can show
-// any app's notifications, nor of a blocked app or one Pinky cannot name.
-// The picture stays in the driver's memory; only text comes back, which
-// the agent sees only where it sees the screen (agentView).
+// read its text by OCR (driver.ObserveOptions.MayCapture): not a locked
+// phone, whose lock screen can show any app's notifications, nor an app
+// Pinky cannot name, nor a blocked app, unless the person allowed that app
+// for the lease's task (the person chose so on 2026-11-08). The picture
+// stays in the driver's memory and is dropped once read: only text and
+// positions come back, which the agent sees only where it sees the screen
+// (agentView). Screenshots, history and recordings still take no picture
+// of a blocked app (recordableScreen).
 func (g *Gateway) mayCapture(d *device, s *screen.Screen) bool {
-	return recordableScreen(g.policy, s)
+	if recordableScreen(g.policy, s) {
+		return true
+	}
+	if s == nil || s.Locked {
+		return false
+	}
+	if _, blocked := g.policy.Blocked(s.App); !blocked {
+		return false // an app Pinky cannot name
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return allowsLocked(d.lease, s.App)
 }
 
 // readsText reports whether reads with OCR may add text on the device's

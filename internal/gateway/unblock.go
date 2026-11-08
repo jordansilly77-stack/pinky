@@ -15,9 +15,11 @@ import (
 // open that app and read its screen until the task ends, and Settings stay
 // as they are. Everything the rules ask about still asks there, read-only
 // mode and scopes still hold, and Pinky keeps no pictures, recording or
-// screen text of it: history has the steps only. A refusal holds for the
-// rest of the task. Password managers are never offered: their screens are
-// passwords.
+// screen text of it: history has the steps only. Its text that only the
+// pixels show is read by OCR from a picture the driver keeps in memory
+// and drops (mayCapture); the agent gets the text, never a screenshot. A
+// refusal holds for the rest of the task. Password managers are never
+// offered: their screens are passwords.
 
 // liftable reports whether the person may allow a blocked app for a task,
 // and names the rule that blocks it.
@@ -76,7 +78,18 @@ func (g *Gateway) unblockAsk(l *lease, p *prep, v policy.Verdict) (policy.Verdic
 // unblockedMessage tells the agent what allowing a blocked app gave it.
 func unblockedMessage(app screen.App) string {
 	return fmt.Sprintf("The person allowed %s for this task: you may open it and read its screen until the task ends. "+
-		"Whatever their rules ask about still asks, and Pinky takes no pictures of it.", appLabel(app))
+		"Whatever their rules ask about still asks, and you get no screenshots of it: text that only its pixels show comes as ocr lines.", appLabel(app))
+}
+
+// blockedShotMessage answers a screenshot asked for on a blocked app the
+// person allowed for the task; readsText says whether the phone reads
+// text from the screen's pixels on this computer.
+func blockedShotMessage(readsText bool) string {
+	msg := "No screenshot: Pinky gives no pictures of a blocked app, also when the person allows it for the task."
+	if readsText {
+		msg += " Text that only its pixels show comes as ocr lines, read from a picture Pinky does not keep."
+	}
+	return msg
 }
 
 // isUnblock reports whether an approval asks to allow a blocked app for the

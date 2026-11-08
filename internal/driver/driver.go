@@ -159,12 +159,13 @@ type ObserveOptions struct {
 	Frame func(ctx context.Context) (image.Image, error)
 	// MayCapture, when set, reports whether the driver may capture the
 	// screen it read, as a screenshot or a frame of the video kept in
-	// memory only, to read its text by OCR: the gateway takes no pictures
-	// of a blocked app or a locked phone. A driver that reads the tree
-	// first (Android) asks it with the screen as read, before it
-	// captures, and adds no OCR elements when it may not. nil means it
-	// may. The iOS driver captures while it reads the tree, so it does
-	// not ask.
+	// memory only, to read its text by OCR: not of a locked phone, nor of
+	// a blocked app unless the person allowed it for the task. The
+	// picture must not outlive the read: no file, no cache. A driver that
+	// reads the tree first (Android) asks it with the screen as read,
+	// before it captures, and adds no OCR elements when it may not. nil
+	// means it may. The iOS driver captures while it reads the tree, so
+	// it does not ask.
 	MayCapture func(s *screen.Screen) bool
 }
 

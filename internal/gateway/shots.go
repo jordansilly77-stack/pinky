@@ -21,7 +21,9 @@ import (
 // (phone_connect, phone_observe, phone_wait_for, a hand-back) get one the
 // same way, so the action that follows has a "before" picture too.
 //
-// A blocked app is never captured or stored. A background screenshot is
+// A blocked app is never captured or stored here. (OCR may read one the
+// person allowed for the task, from a picture the driver keeps in memory
+// only: mayCapture.) A background screenshot is
 // bracketed by two reads, like the screenshots agents get: it is kept only
 // when the read just before it and a later read, started after the
 // screenshot returned, show the same app, which is not blocked, on an

@@ -686,7 +686,7 @@
   "needsSection": "待你处理",
   "needsTakeOverTooltip": "在这里的投屏画面中操作",
   "needsThenClickDone": "，然后点按“完成”。",
-  "needsUnblockHow": "{app} 被“{rule}”屏蔽。允许后，{agent} 可以打开它并读取屏幕内容，直到这个任务结束。规则要询问的操作仍会询问你，Pinky 不会给它截图或录屏，它在设置里仍是屏蔽的。",
+  "needsUnblockHow": "{app} 被“{rule}”屏蔽。允许后，{agent} 可以打开它并读取屏幕内容，直到这个任务结束。规则要询问的操作仍会询问你，Pinky 不会保留它的截图或录屏（只从画面里识别文字，不留图），它在设置里仍是屏蔽的。",
   "pairingAddrField": "IP 地址和端口",
   "pairingAddrInvalid": "请输入手机上显示的 IP 地址和端口，例如 192.168.1.20:37123。",
   "pairingBusy": "正在配对…",
