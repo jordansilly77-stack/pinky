@@ -27,6 +27,7 @@ ocr "Delivery in 25–35 min" @200,300
 
 - One element per line: `[ref] role "label" @x,y state`. Act on refs: `phone_tap { ref: 15 }`. A ref stays valid while its element keeps its label and place, across screens.
 - Use `x,y` only for things without a ref, such as `ocr` lines (text read from pixels). Coordinates are screenshot pixels; the first line gives the size.
+- On Android, `ocr` lines appear by themselves where the element list is empty or sparse over a web page, game or map (mini-programs and other pages inside super-apps, for example). When text you expect is missing elsewhere (in an image, a chart), `phone_observe { ocr: true }` reads all of it. `no_ocr` marks such an area on a computer that cannot read text from pixels: `phone_observe { screenshot: true }` shows it.
 - After an action you get only the changes: `+` added, `-` removed, `~` changed. A new app, or a big change, sends the whole screen. `no change` means the screen looks the same.
 - Toasts, notifications and dialogs since your last result are listed above the elements. Digit codes in notifications are masked.
 - iPhone states: `adjustable` means a swipe up or down on it changes it (picker wheels, sliders). `not_in_screenshot` means the app hides it from screenshots and from the person's view in Pinky, as some passcode keypads are: the person watching may see blank space there.

@@ -102,6 +102,7 @@ note: "<the person's note>"
 
 - The first line is the status, or `error: <code>` for errors (then the MCP result also has `isError: true`). Details follow as `key: value`, separated by ` · `: `approval_id`, `rule`, `decision`, `settle`, `matched`, `holder`, `setup`, and `no change` when the screen did not change.
 - The screen is the format in DESIGN.md: a header line, then events (`toast:`, `notification:`, `dialog:`), then one element per line `[ref] role "label" @x,y state`, then `ocr` lines.
+- `ocr` lines are text read from the screen's pixels that no element shows; they have no ref and are tapped by `x,y`. iPhones add them on every read that shows the agent the screen. Android phones add them where the element tree is empty or sparse over a web view or a canvas (mini-programs and other pages in super-apps' own web views, games, maps), and only there; `phone_observe { ocr: true }` asks for all the text no element shows. OCR uses Vision on macOS and Windows.Media.Ocr on Windows; a computer without it (Linux) marks those Android areas with the state `no_ocr` instead. The picture OCR reads stays in memory: none is taken of a locked phone or a blocked app.
 - After an action, only the changes are sent: `+` added, `-` removed, `~` changed (including `~ screen …` for a changed header). A new app, size, orientation or lock state, or a diff longer than the screen, sends the whole screen.
 - `phone_connect`, `phone_observe` and `phone_handoff` always send the whole screen.
 - A blocked app shows as `app: blocked app` with no elements; its toasts and dialogs are dropped, and no screenshot is returned. An app the person allowed for the task (see `phone_launch`) shows as usual, but still without screenshots.
@@ -179,6 +180,7 @@ Returns the whole current screen.
 | --- | --- | --- |
 | `wait_ms` | 0–30000 | Wait until the screen differs from what the agent last saw (then let it settle), or until this passes |
 | `screenshot` | boolean | Add a JPEG screenshot, in the screen's pixel space. None while the phone is locked or a blocked app is in front |
+| `ocr` | boolean | Add all the text the pixels show that no element does, as `ocr` lines, however complete the list looks (Android adds such lines by itself only where the list is empty or sparse). On a computer without OCR, the result says so |
 
 Works while the person is in control and while an approval is open.
 
