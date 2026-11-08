@@ -39,7 +39,8 @@ type connectIn struct {
 	Task   string   `json:"task" jsonschema:"One line naming the task, shown to the person, e.g. Reorder last week's lunch."`
 	Apps   []string `json:"apps,omitempty" jsonschema:"Optional: the only apps this task needs, by name or id. Pinky then refuses to launch other apps and asks the person before typing into them."`
 	// ReadOnly lets an agent ask for less than the person gave it.
-	ReadOnly bool `json:"read_only,omitempty" jsonschema:"Run this task read-only, for tasks that only look: you may open apps, read and search, but anything the person's rules would ask about is refused, and typing works only in search fields. A new agent's approval card then offers read-only access."`
+	ReadOnly   bool   `json:"read_only,omitempty" jsonschema:"Run this task read-only, for tasks that only look: you may open apps, read and search, but anything the person's rules would ask about is refused, and typing works only in search fields. A new agent's approval card then offers read-only access."`
+	ApprovalID string `json:"approval_id,omitempty" jsonschema:"From an approval_pending result: repeat the same phone_connect, with the same device, task, apps and read_only, to keep waiting for the person's answer."`
 }
 
 type releaseIn struct {
@@ -213,7 +214,7 @@ func (s *Server) addTools(srv *sdk.Server, remote bool) {
 		InputSchema: schema[connectIn](nil), Annotations: &sdk.ToolAnnotations{OpenWorldHint: boolp(false)}},
 		func(ctx context.Context, req *sdk.CallToolRequest, in connectIn) (*sdk.CallToolResult, any, error) {
 			return render(s.session(req, remote).Connect(ctx, gateway.ConnectRequest{
-				Call: gateway.Call{Device: strings.TrimSpace(in.Device), Progress: progress(ctx, req)},
+				Call: gateway.Call{Device: strings.TrimSpace(in.Device), ApprovalID: strings.TrimSpace(in.ApprovalID), Progress: progress(ctx, req)},
 				Task: in.Task, Apps: in.Apps, ReadOnly: in.ReadOnly})), nil, nil
 		})
 

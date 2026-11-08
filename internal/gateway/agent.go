@@ -384,7 +384,9 @@ func (s *Session) Connect(ctx context.Context, req ConnectRequest) *Result {
 	if r := []rune(title); len(r) > 200 {
 		title = string(r[:200])
 	}
-	if res := s.approveAgent(ctx, req.Call, title, req.ReadOnly); res != nil {
+	req.Task = title
+	req.Device = strings.TrimSpace(req.Device)
+	if res := s.approveAgent(ctx, req); res != nil {
 		return res
 	}
 
@@ -674,7 +676,7 @@ func (g *Gateway) firstScreen(ctx context.Context, l *lease) *Result {
 
 // approveAgent holds an agent's first connection until the person allows
 // it. It returns nil once the agent may connect.
-func (s *Session) approveAgent(ctx context.Context, c Call, title string, readOnly bool) *Result {
+func (s *Session) approveAgent(ctx context.Context, req ConnectRequest) *Result {
 	g := s.g
 	if g.agentApproved(ctx, s.agent) {
 		return nil
@@ -683,17 +685,13 @@ func (s *Session) approveAgent(ctx context.Context, c Call, title string, readOn
 		g.allowAgent(s.agent)
 		return nil
 	}
-	b := approval.Binding{Session: s.id, Tool: "phone_connect", Args: "agent"}
-	id := c.ApprovalID
+	b := agentConnectBinding(s, req)
+	id := strings.TrimSpace(req.ApprovalID)
 	if id != "" {
 		if err := g.approvals.Check(id, b); err != nil {
-			if errors.Is(err, approval.ErrMismatch) {
-				return errResult(ErrInvalidArgument, "approval_id %s belongs to another call.", id)
-			}
-			id = ""
+			return agentApprovalIDResult(id, err)
 		}
-	}
-	if id == "" {
+	} else {
 		for _, info := range g.approvals.List(true) {
 			if info.Binding == b {
 				id = info.ID
@@ -702,19 +700,25 @@ func (s *Session) approveAgent(ctx context.Context, c Call, title string, readOn
 	}
 	if id == "" {
 		mode := g.opt.DefaultScope.Mode
-		if readOnly {
+		if req.ReadOnly {
 			mode = ScopeReadOnly
 		}
 		info := g.approvals.Open(approval.Request{
 			Kind: approval.KindAgent, Binding: b, Rule: "New agent", Agent: s.agent.Name,
 			Title:  fmt.Sprintf("Let %s use your phones?", s.agent.Name),
-			Detail: fmt.Sprintf("%s wants to connect for “%s”. Allowing gives it %s access.", s.agent.Name, title, mode),
-			Data:   agentRequest{readOnly: readOnly},
+			Detail: fmt.Sprintf("%s wants to connect for “%s”. Allowing gives it %s access.", s.agent.Name, req.Task, mode),
+			Data:   agentRequest{readOnly: req.ReadOnly},
 		})
 		id = info.ID
 	}
-	info, _ := g.approvals.Get(id)
-	out, err := g.waitApproval(ctx, nil, id, info, c.Progress)
+	info, err := g.approvals.Get(id)
+	if err != nil {
+		return agentApprovalIDResult(id, err)
+	}
+	out, err := g.waitApproval(ctx, nil, id, info, req.Progress)
+	if errors.Is(err, errTaken) {
+		return takenResult(id)
+	}
 	if err != nil {
 		g.approvals.Withdraw(id, "the agent cancelled the call")
 		return errResult(ErrInternal, "The call was cancelled.")
@@ -729,6 +733,35 @@ func (s *Session) approveAgent(ctx context.Context, c Call, title string, readOn
 	}
 	return &Result{Status: StatusDenied, Rule: "New agent", Note: denyNote(out),
 		Message: "The person did not allow this agent to use Pinky."}
+}
+
+// Binding.Device stays empty: the card asks to let the agent use the phones,
+// and a device id there would mark one phone.
+func agentConnectBinding(s *Session, req ConnectRequest) approval.Binding {
+	return approval.Binding{Session: s.id, Tool: "phone_connect", Args: digest(agentConnectKey(s.agent, req))}
+}
+
+func agentConnectKey(a AgentInfo, req ConnectRequest) string {
+	return strings.Join([]string{
+		"agent",
+		a.Name,
+		a.Client,
+		strings.TrimSpace(req.Device),
+		strings.TrimSpace(req.Task),
+		fmt.Sprintf("%t", req.ReadOnly),
+		strings.Join(req.Apps, "\x1f"),
+	}, "\x00")
+}
+
+func agentApprovalIDResult(id string, err error) *Result {
+	switch {
+	case errors.Is(err, approval.ErrMismatch):
+		return errResult(ErrInvalidArgument, "approval_id %s belongs to another call. Nothing was done. Repeat the original phone_connect exactly, or call without approval_id to ask again.", id)
+	case errors.Is(err, approval.ErrUsed), errors.Is(err, approval.ErrExpired):
+		return errResult(ErrInvalidArgument, "approval_id %s is finished. Nothing was done. Call again without approval_id to ask again.", id)
+	default:
+		return errResult(ErrInvalidArgument, "Unknown approval_id %q. Nothing was done. Call again without approval_id.", id)
+	}
 }
 
 func denyNote(out approval.Outcome) string {

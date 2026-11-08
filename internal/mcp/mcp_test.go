@@ -329,6 +329,128 @@ func TestDisplayName(t *testing.T) {
 	}
 }
 
+func TestPhoneConnectApprovalContinuation(t *testing.T) {
+	h := newHarness(t, func(o *gateway.Options) {
+		o.TrustNewAgents = false
+		o.MaxBlock = 150 * time.Millisecond
+		o.ApprovalTimeout = 3 * time.Second
+	})
+	c := h.connect(t, "claude-code")
+	listed, err := c.cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var connectSchema []byte
+	for _, tool := range listed.Tools {
+		if tool.Name == "phone_connect" {
+			connectSchema, _ = json.Marshal(tool.InputSchema)
+		}
+	}
+	var parsed struct {
+		Properties           map[string]json.RawMessage `json:"properties"`
+		Required             []string                   `json:"required"`
+		AdditionalProperties json.RawMessage            `json:"additionalProperties"`
+	}
+	if err := json.Unmarshal(connectSchema, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := parsed.Properties["approval_id"]; !ok {
+		t.Errorf("phone_connect schema omits approval_id: %s", connectSchema)
+	}
+	if string(parsed.AdditionalProperties) != "false" {
+		t.Errorf("additionalProperties = %s, want false", parsed.AdditionalProperties)
+	}
+	if strings.Join(parsed.Required, ",") != "task" {
+		t.Errorf("required = %v, want [task]", parsed.Required)
+	}
+
+	args := map[string]any{"device": "pixel", "task": "Reorder last week's lunch", "apps": []string{"Dinely"}, "read_only": true}
+	text, isErr := c.call(t, "phone_connect", args)
+	if isErr || !strings.HasPrefix(text, "approval_pending") || !strings.Contains(text, "rule: New agent") {
+		t.Fatalf("first connect:\n%s", text)
+	}
+	id := regexp.MustCompile(`approval_id: (ap_\w+)`).FindStringSubmatch(text)
+	if id == nil {
+		t.Fatalf("no approval id:\n%s", text)
+	}
+	assertNoPhoneControl(t, h, "Claude Code")
+
+	again := map[string]any{"device": "pixel", "task": "Reorder last week's lunch", "apps": []string{"Dinely"}, "read_only": true, "approval_id": id[1]}
+	text, isErr = c.call(t, "phone_connect", again)
+	if isErr || !strings.HasPrefix(text, "approval_pending") || !strings.Contains(text, id[1]) {
+		t.Fatalf("continuation:\n%s", text)
+	}
+	assertNoPhoneControl(t, h, "Claude Code")
+
+	wide := map[string]any{"device": "pixel", "task": "Reorder last week's lunch", "apps": []string{"Dinely", "Chatter"}, "read_only": false, "approval_id": id[1]}
+	text, isErr = c.call(t, "phone_connect", wide)
+	if !isErr || !strings.Contains(text, "error: invalid_argument") {
+		t.Fatalf("widened continuation:\n%s", text)
+	}
+	assertNoPhoneControl(t, h, "Claude Code")
+	if needs := h.g.Needs(); len(needs) != 1 || needs[0].ID != id[1] {
+		t.Fatalf("original approval consumed: %+v", needs)
+	}
+
+	other := h.connect(t, "codex")
+	stolen := map[string]any{"device": "pixel", "task": "Reorder last week's lunch", "apps": []string{"Dinely"}, "read_only": true, "approval_id": id[1]}
+	text, isErr = other.call(t, "phone_connect", stolen)
+	if !isErr || !strings.Contains(text, "error: invalid_argument") {
+		t.Fatalf("other agent:\n%s", text)
+	}
+	assertNoPhoneControl(t, h, "Codex")
+	if needs := h.g.Needs(); len(needs) != 1 || needs[0].ID != id[1] {
+		t.Fatalf("cross-agent call consumed the approval: %+v", needs)
+	}
+
+	if err := h.g.Decide(id[1], gateway.AllowOnce, ""); err != nil {
+		t.Fatal(err)
+	}
+	text, isErr = c.call(t, "phone_connect", again)
+	if isErr || !strings.HasPrefix(text, "settled") || !strings.Contains(text, "read-only") {
+		t.Fatalf("after the person allowed:\n%s", text)
+	}
+	tasks := h.g.Tasks()
+	if len(tasks) != 1 || !tasks[0].ReadOnly || tasks[0].Agent != "Claude Code" {
+		t.Fatalf("task: %+v", tasks)
+	}
+	text, isErr = c.call(t, "phone_launch", map[string]any{"app": "Chatter"})
+	if !isErr || !strings.Contains(text, "error: scope_denied") {
+		t.Fatalf("app outside the bound list:\n%s", text)
+	}
+	for _, in := range h.dev.Inputs() {
+		if in.Kind == "launch" && strings.Contains(in.Text, "Chatter") {
+			t.Fatalf("refused launch reached the phone: %+v", h.dev.Inputs())
+		}
+	}
+}
+
+func assertNoPhoneControl(t *testing.T, h *harness, agent string) {
+	t.Helper()
+	if tasks := h.g.Tasks(); len(tasks) != 0 {
+		t.Fatalf("phone leased: %+v", tasks)
+	}
+	for _, d := range h.g.Devices() {
+		if d.Status == gateway.DeviceWorking {
+			t.Fatalf("device in use: %+v", d)
+		}
+	}
+	agents, err := h.g.Agents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range agents {
+		if a.Name == agent && a.Approved {
+			t.Fatalf("%s approved before a decision: %+v", agent, a)
+		}
+	}
+	for _, in := range h.dev.Inputs() {
+		if in.Kind != "" {
+			t.Fatalf("phone input before approval: %+v", h.dev.Inputs())
+		}
+	}
+}
+
 func TestStatusLine(t *testing.T) {
 	m := true
 	got := StatusLine(&gateway.Result{Status: gateway.StatusPending, DeviceName: "Pixel 9", ApprovalID: "ap_1", Rule: "Payments", Matched: &m})
