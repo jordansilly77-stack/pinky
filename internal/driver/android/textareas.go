@@ -167,15 +167,15 @@ func sparseWeb(n *textNode, vis screen.Rect) bool {
 		}
 	}
 	labelled = small
-	// Cover on a grid: which cells' middles lie in a labelled node.
-	step := max(vis.W, vis.H) / coverCells
-	if step <= 0 {
-		step = 1
-	}
-	cells, covered := 0, 0
+	// Cover on a grid: which cells' middles lie in a labelled node. It
+	// stops once enough are covered.
+	step := max(1, max(vis.W, vis.H)/coverCells)
+	cols := (vis.W + step - 1 - step/2) / step
+	rows := (vis.H + step - 1 - step/2) / step
+	need := webMinCover * float64(cols*rows)
+	covered := 0
 	for y := vis.Y + step/2; y < vis.Y+vis.H; y += step {
 		for x := vis.X + step/2; x < vis.X+vis.W; x += step {
-			cells++
 			p := screen.Point{X: x, Y: y}
 			for _, r := range labelled {
 				if r.Contains(p) {
@@ -183,9 +183,12 @@ func sparseWeb(n *textNode, vis screen.Rect) bool {
 					break
 				}
 			}
+			if float64(covered) >= need {
+				return false
+			}
 		}
 	}
-	return cells > 0 && float64(covered) < webMinCover*float64(cells)
+	return true
 }
 
 // countLabelled counts the labelled nodes of n's subtree, n included,
