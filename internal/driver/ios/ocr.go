@@ -5,14 +5,15 @@ import (
 	"github.com/DIYgod/pinky/internal/screen"
 )
 
-// OCR is the shared engine in internal/ocr (Vision on macOS). These names
-// keep the driver's code as it was before the engine moved there.
+// OCR is the shared engine in internal/ocr: Vision on macOS,
+// Windows.Media.Ocr on Windows. These names keep the driver's code as it
+// was before the engine moved there.
 
 type ocrLine = ocr.Line
 
 type ocrOptions = ocr.Options
 
-// ocrLanguages are the languages Vision reads, in priority order.
+// ocrLanguages are the languages OCR reads, in priority order.
 var ocrLanguages = ocr.Languages
 
 func recognizeText(img []byte, opt ocrOptions) ([]ocrLine, error) { return ocr.Recognize(img, opt) }
