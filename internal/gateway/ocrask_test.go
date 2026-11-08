@@ -1,7 +1,13 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/jpeg"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -164,5 +170,176 @@ func TestWaitForAsksForAllText(t *testing.T) {
 	mustStatus(t, res, StatusSettled)
 	if dev.allReads() == 0 {
 		t.Fatal("no read asked for all the text")
+	}
+}
+
+// captureDev reads text the way the Android driver does when the gateway
+// lets it capture (MayCapture): it takes a picture in memory, reads it and
+// drops it. It counts its own captures, and apart from them the
+// screenshots the gateway asks for, by the app in front.
+type captureDev struct {
+	*demo.Device
+	mu       sync.Mutex
+	captured map[string]int // the driver's own pictures, for OCR
+	shots    map[string]int // pictures the gateway asked for
+}
+
+func (d *captureDev) Observe(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, error) {
+	s, err := d.Device.Observe(ctx, opt)
+	if err != nil || !opt.OCR || (opt.MayCapture != nil && !opt.MayCapture(s)) {
+		return s, err
+	}
+	if _, err := d.Device.Screenshot(ctx); err != nil { // in memory, dropped here
+		return nil, err
+	}
+	d.mu.Lock()
+	d.captured[s.App.ID]++
+	d.mu.Unlock()
+	if s.App.ID == wallet {
+		s.Elements = append(s.Elements, screen.Element{Role: screen.RoleText, Label: "Balance ¥4,321.09",
+			Bounds: screen.Rect{X: 100, Y: 1500, W: 600, H: 60}, Source: screen.SourceOCR})
+	}
+	return s, nil
+}
+
+// Screenshot is the gateway's: a picture of the wallet comes all red, so
+// that one stored anywhere would show.
+func (d *captureDev) Screenshot(ctx context.Context) (image.Image, error) {
+	s, err := d.Device.Observe(ctx, driver.ObserveOptions{})
+	if err != nil {
+		return nil, err
+	}
+	d.mu.Lock()
+	d.shots[s.App.ID]++
+	d.mu.Unlock()
+	if s.App.ID == wallet {
+		img := image.NewRGBA(image.Rect(0, 0, s.Width, s.Height))
+		draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{R: 255, A: 255}), image.Point{}, draw.Src)
+		return img, nil
+	}
+	return d.Device.Screenshot(ctx)
+}
+
+// redFiles returns the stored pictures that are the wallet's red.
+func redFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	for _, f := range mediaFiles(dir) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := jpeg.Decode(bytes.NewReader(b))
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		c := img.Bounds().Size().Div(2)
+		r, g, bl, _ := img.At(c.X, c.Y).RGBA()
+		if r>>8 > 200 && g>>8 < 60 && bl>>8 < 60 {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func (d *captureDev) count(m map[string]int, app string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return m[app]
+}
+
+// A blocked app the person allowed for the task is read by OCR too (the
+// person chose so on 2026-11-08): its driver may capture it in memory, and
+// the agent gets the text and where it is. No picture of it is kept, stored
+// or sent: no screenshot in any result, none taken by the gateway, nothing
+// in the history's media or screen text, no recording. Before Allow, and in
+// the next task, it is not captured at all.
+func TestAllowedBlockedAppReadByOCR(t *testing.T) {
+	ctx := context.Background()
+	base := demo.NewDevice("pixel", "Pixel 9", driver.Android)
+	dev := &captureDev{Device: base, captured: map[string]int{}, shots: map[string]int{}}
+	dir := t.TempDir()
+	g := newDevGateway(t, base, dev, func(o *Options) { o.DataDir = dir; o.NoScreenshots = false })
+	s, _ := connect(t, g, "Bookkeeping")
+	var results []*Result
+	keep := func(r *Result) *Result { results = append(results, r); return r }
+
+	// In front but not allowed: hidden, and not captured.
+	base.Show("wallet")
+	if res := keep(s.Observe(ctx, ObserveRequest{OCR: true})); res.Rule == "" {
+		t.Fatalf("the wallet is not hidden: %s", res.Screen.Render())
+	}
+	if n := dev.count(dev.captured, wallet); n != 0 {
+		t.Fatalf("captured a blocked app the person did not allow, %d times", n)
+	}
+	mustStatus(t, keep(s.Act(ctx, Call{}, Action{Tool: "key", Key: "home"})), StatusSettled)
+
+	go func() {
+		n := waitNeed(t, g)
+		g.Decide(n.ID, AllowTask, "")
+	}()
+	res := keep(s.Act(ctx, Call{}, Action{Tool: "launch", App: "Google Wallet"}))
+	mustStatus(t, res, StatusSettled)
+	if !strings.Contains(res.Screen.Render(), `ocr "Balance ¥4,321.09" @400,1530`) {
+		t.Fatalf("no OCR text after Allow:\n%s", res.Screen.Render())
+	}
+	if dev.count(dev.captured, wallet) == 0 {
+		t.Fatal("the allowed app was not captured for OCR")
+	}
+	obs := keep(s.Observe(ctx, ObserveRequest{OCR: true, Screenshot: true}))
+	if !strings.Contains(obs.Screen.Render(), "Balance ¥4,321.09") ||
+		!strings.Contains(obs.Message, "No screenshot") || !strings.Contains(obs.Message, "ocr lines") {
+		t.Fatalf("observe: %s\n%s", obs.Message, obs.Screen.Render())
+	}
+	keep(s.WaitFor(ctx, WaitForRequest{Text: "Balance", TimeoutMS: 500}))
+	// Screenshots, history pictures and recordings still refuse it.
+	if recordableScreen(g.policy, &screen.Screen{App: screen.App{Name: "Google Wallet", ID: wallet}}) {
+		t.Fatal("a blocked app counts as recordable")
+	}
+	keep(s.Release(ctx, ReleaseRequest{}))
+	g.Flush()
+
+	for i, r := range results {
+		if r.Screenshot != nil {
+			t.Errorf("result %d carries a screenshot", i)
+		}
+	}
+	// A background screenshot that the wallet came up during is dropped
+	// (shots.go); whatever the gateway got, none of it is stored, and the
+	// driver's own pictures never leave it.
+	if len(mediaFiles(dir)) == 0 {
+		t.Fatal("no pictures stored at all: the check below would prove nothing")
+	}
+	if red := redFiles(t, dir); len(red) > 0 {
+		t.Fatalf("pictures of the blocked app stored: %v (the gateway asked for %d)", red, dev.count(dev.shots, wallet))
+	}
+	tasks, err := g.History(ctx, HistoryQuery{})
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("history: %v %v", tasks, err)
+	}
+	steps, err := g.store.Steps(ctx, tasks[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range steps {
+		if strings.Contains(st.ScreenText, "4,321.09") || strings.Contains(st.ScreenText, "4242") {
+			t.Errorf("the blocked app's text is in history: %+v", st)
+		}
+	}
+	for _, st := range tasks[0].Steps {
+		if st.Tool == "phone_launch" && st.After != "" {
+			t.Errorf("a picture of the blocked app in history: %+v", st)
+		}
+	}
+
+	// The next task has not allowed it: not captured.
+	before := dev.count(dev.captured, wallet)
+	s2, _ := connect(t, g, "Bookkeeping again")
+	base.Show("wallet")
+	if res := s2.Observe(ctx, ObserveRequest{OCR: true}); res.Rule == "" || strings.Contains(res.Screen.Render(), "Balance") {
+		t.Fatalf("the next task sees the wallet: %s", res.Screen.Render())
+	}
+	if n := dev.count(dev.captured, wallet); n != before {
+		t.Fatalf("captured in a task that did not allow it: %d", n-before)
 	}
 }

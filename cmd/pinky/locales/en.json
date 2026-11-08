@@ -4156,7 +4156,7 @@
   "@needsThenClickDone": {
     "description": "Ends the sentence that says how to unlock a phone on a handoff card (\"Unlock it on the phone, then click Done.\"): it starts with a comma and ends the sentence. Done is the card's button (needsDone)."
   },
-  "needsUnblockHow": "{app} is blocked by “{rule}”. Allowing lets {agent} open it and read its screen until this task ends. What your rules ask about still asks, Pinky takes no pictures of it, and it stays blocked in Settings.",
+  "needsUnblockHow": "{app} is blocked by “{rule}”. Allowing lets {agent} open it and read its screen until this task ends. What your rules ask about still asks, Pinky keeps no screenshots or recordings of it (it reads text from its screen without keeping a picture), and it stays blocked in Settings.",
   "@needsUnblockHow": {
     "description": "On the card that asks whether an agent may open a blocked app for its task, above Deny and needsAllowTask. rule is the rule that blocks it, such as Finance apps.",
     "placeholders": {

@@ -944,7 +944,7 @@ func (s *Session) Observe(ctx context.Context, req ObserveRequest) *Result {
 		case res.Rule != "":
 			res.Message = strings.TrimSpace(res.Message + " No screenshot: the app is blocked.")
 		case blocked:
-			res.Message = strings.TrimSpace(res.Message + " No screenshot: Pinky takes no pictures of a blocked app, also when the person allows it for the task.")
+			res.Message = strings.TrimSpace(res.Message + " " + blockedShotMessage(g.readsText(l.dev)))
 		default:
 			img, err := g.screenshot(ctx, l.dev, cur)
 			switch {
