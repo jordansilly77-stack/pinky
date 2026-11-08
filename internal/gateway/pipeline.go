@@ -487,10 +487,10 @@ func (p *prep) finger() (screen.Point, bool) {
 // next to the finger of a tap or swipe: on web views and canvas apps
 // "还款" or "Pay" may be nowhere in the element tree. The read an action
 // starts from has no OCR (it would slow every action), so on phones whose
-// driver reads text (d.ocr) it reads again with OCR, but only where the
-// tree says little about the point: no element there, an unlabelled one,
-// or a large one such as a web view. Without a second read the action is
-// checked as before.
+// driver reads text (readsText) it reads again with all the OCR text, but
+// only where the tree says little about the point: no element there, an
+// unlabelled one, or a large one such as a web view. Without a second read
+// the action is checked as before.
 func (g *Gateway) ocrForVerdict(ctx context.Context, d *device, p *prep, cur *screen.Screen) {
 	pt, ok := p.finger()
 	if !ok || cur == nil {
@@ -498,13 +498,10 @@ func (g *Gateway) ocrForVerdict(ctx context.Context, d *device, p *prep, cur *sc
 	}
 	src := cur
 	if !hasOCR(cur) {
-		g.mu.Lock()
-		reads := d.ocr
-		g.mu.Unlock()
-		if !reads || !vagueAt(cur, p.target) {
+		if !vagueAt(cur, p.target) || !g.readsText(d) {
 			return
 		}
-		o, err := g.observe(ctx, d, true)
+		o, err := g.observeOCR(ctx, d, ocrAll)
 		if err != nil {
 			return
 		}
@@ -1623,8 +1620,33 @@ func (g *Gateway) readError(l *lease, err error) *Result {
 // model (15 s measured, about a minute the first time on a new Mac).
 const observeTimeout = 60 * time.Second
 
-// observe reads the screen, assigns refs and collects events.
+// readOCR is how a read asks the driver for OCR.
+type readOCR int
+
+const (
+	ocrOff readOCR = iota
+	// ocrAuto: the text the driver finds its tree misses (iOS: what OCR
+	// reads that no element shows; Android: over web views and canvases
+	// whose tree is empty or sparse).
+	ocrAuto
+	// ocrAll: all the text no element shows, however complete the tree
+	// looks: the agent asked for it, or a finger's spot is checked
+	// (driver.ObserveOptions.OCRAll).
+	ocrAll
+)
+
+// observe reads the screen, assigns refs and collects events. With ocr,
+// the driver adds the text its tree misses (ocrAuto).
 func (g *Gateway) observe(ctx context.Context, d *device, ocr bool) (*screen.Screen, error) {
+	mode := ocrOff
+	if ocr {
+		mode = ocrAuto
+	}
+	return g.observeOCR(ctx, d, mode)
+}
+
+// observeOCR is observe with the kind of OCR the read asks for.
+func (g *Gateway) observeOCR(ctx context.Context, d *device, mode readOCR) (*screen.Screen, error) {
 	g.mu.Lock()
 	dev, onBG := g.screenOfLocked(d)
 	video := d.video
@@ -1641,12 +1663,14 @@ func (g *Gateway) observe(ctx context.Context, d *device, ocr bool) (*screen.Scr
 	if video != nil {
 		readTok = video.readStarting(start)
 	}
-	opt := driver.ObserveOptions{OCR: ocr}
-	if ocr {
+	opt := driver.ObserveOptions{OCR: mode != ocrOff, OCRAll: mode == ocrAll}
+	if opt.OCR {
 		// A picture from the live video, for drivers whose screenshots are
-		// slow (an iPhone over Wi-Fi); it shares the mirror's stream.
+		// slow (an iPhone over Wi-Fi) or missing (an Android background
+		// display); it shares the mirror's stream.
 		key := hubKey(d.id, onBG)
 		opt.Frame = func(ctx context.Context) (image.Image, error) { return g.frameShot(ctx, key, dev) }
+		opt.MayCapture = func(s *screen.Screen) bool { return g.mayCapture(d, s) }
 	}
 	s, err := dev.Observe(ctx, opt)
 	if err != nil && video != nil {
@@ -1665,7 +1689,7 @@ func (g *Gateway) observe(ctx context.Context, d *device, ocr bool) (*screen.Scr
 		g.mu.Unlock()
 		if left {
 			g.wake(ctx, d)
-			return g.observe(ctx, d, ocr)
+			return g.observeOCR(ctx, d, mode)
 		}
 	}
 	if err != nil {
@@ -1694,7 +1718,7 @@ func (g *Gateway) observe(ctx context.Context, d *device, ocr bool) (*screen.Scr
 		d.events = append([]screen.Event(nil), d.events[n-50:]...)
 	}
 	d.last = s
-	if ocr && !d.ocr {
+	if mode != ocrOff && !d.ocr {
 		d.ocr = hasOCR(s)
 	}
 	g.confirmShotLocked(d, s, start)
@@ -1718,6 +1742,45 @@ func (g *Gateway) observe(ctx context.Context, d *device, ocr bool) (*screen.Scr
 	}
 	return s, nil
 }
+
+// mayCapture reports whether a driver may capture a screen it read, to
+// read its text by OCR (driver.ObserveOptions.MayCapture): as for every
+// picture Pinky takes, not of a locked phone, whose lock screen can show
+// any app's notifications, nor of a blocked app or one Pinky cannot name.
+// The picture stays in the driver's memory; only text comes back, which
+// the agent sees only where it sees the screen (agentView).
+func (g *Gateway) mayCapture(d *device, s *screen.Screen) bool {
+	return recordableScreen(g.policy, s)
+}
+
+// readsText reports whether reads with OCR may add text on the device's
+// screen: one has (an iPhone's), or its driver can read text from pixels
+// on this computer (driver.TextReader).
+func (g *Gateway) readsText(d *device) bool {
+	g.mu.Lock()
+	seen := d.ocr
+	dev, _ := g.screenOfLocked(d)
+	g.mu.Unlock()
+	if seen {
+		return true
+	}
+	// Without the lock: the first answer may load the recognizer.
+	tr, ok := dev.(driver.TextReader)
+	return ok && tr.ReadsText()
+}
+
+// noOCR reports whether the driver of the device's screen says that this
+// computer cannot read text from pixels.
+func (g *Gateway) noOCR(d *device) bool {
+	g.mu.Lock()
+	dev, _ := g.screenOfLocked(d)
+	g.mu.Unlock()
+	tr, ok := dev.(driver.TextReader)
+	return ok && !tr.ReadsText()
+}
+
+// noOCRMessage answers phone_observe { ocr: true } where noOCR.
+const noOCRMessage = "This computer cannot read text from the screen's pixels (no OCR), so text that no element shows is missing; a screenshot shows it."
 
 func notificationsOnly(evs []screen.Event) []screen.Event {
 	var keep []screen.Event

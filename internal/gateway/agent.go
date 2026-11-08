@@ -147,6 +147,9 @@ type ObserveRequest struct {
 	Call
 	WaitMS     int
 	Screenshot bool
+	// OCR asks for all the text the screen's pixels show that no element
+	// does, however complete the tree looks (ocrAll).
+	OCR bool
 }
 
 // WaitForRequest is phone_wait_for.
@@ -908,14 +911,18 @@ func (s *Session) Observe(ctx context.Context, req ObserveRequest) *Result {
 	if req.WaitMS > 0 {
 		g.waitChange(ctx, l, time.Duration(req.WaitMS)*time.Millisecond, req.Progress)
 	}
-	cur, err := g.observe(ctx, l.dev, true)
+	mode := ocrAuto
+	if req.OCR {
+		mode = ocrAll
+	}
+	cur, err := g.observeOCR(ctx, l.dev, mode)
 	if err != nil && errors.Is(err, driver.ErrOffline) && g.expectedBack(l.dev) {
 		// The phone dropped as it moves between its cable and Wi-Fi: read
 		// it again once it is back (wifi.go).
 		if res := g.gate(l, req.ApprovalID, false); res != nil {
 			return g.finish(l, res)
 		}
-		cur, err = g.observe(ctx, l.dev, true)
+		cur, err = g.observeOCR(ctx, l.dev, mode)
 	}
 	if err != nil {
 		return g.finish(l, g.readError(l, err))
@@ -925,6 +932,9 @@ func (s *Session) Observe(ctx context.Context, req ObserveRequest) *Result {
 	if cur.Locked {
 		res.Status = StatusLocked
 		res.Message = "The phone is locked; call phone_handoff so the person can unlock it."
+	}
+	if req.OCR && g.noOCR(l.dev) {
+		res.Message = strings.TrimSpace(res.Message + " " + noOCRMessage)
 	}
 	_, blocked := g.policy.Blocked(cur.App)
 	if !req.Screenshot {
@@ -1033,7 +1043,7 @@ func (s *Session) WaitFor(ctx context.Context, req WaitForRequest) *Result {
 		g.mu.Unlock()
 		found := screenHas(view, evs, text)
 		if !found && time.Since(lastOCR) >= waitForOCREvery {
-			if o, err := g.observe(ctx, l.dev, true); err == nil {
+			if o, err := g.observeOCR(ctx, l.dev, ocrAll); err == nil {
 				lastOCR = time.Now()
 				ov, _ := g.agentView(l, o)
 				ocrFound = screenHas(ov, evs, text)

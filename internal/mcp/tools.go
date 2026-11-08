@@ -52,6 +52,7 @@ type observeIn struct {
 	Device     string `json:"device,omitempty" jsonschema:"The phone, by device id or name. Required when this session holds more than one phone."`
 	WaitMS     int    `json:"wait_ms,omitempty" jsonschema:"Wait up to this many milliseconds (at most 30000) for the screen to change, for example while something loads."`
 	Screenshot bool   `json:"screenshot,omitempty" jsonschema:"Also return a screenshot. Use it only when the element list is not enough."`
+	OCR        bool   `json:"ocr,omitempty" jsonschema:"Also read all the text the screen's pixels show that no element does (text in images, maps, games, web pages), as ocr lines. Android adds them by itself where the list looks empty or sparse; iPhones on every read."`
 }
 
 type tapIn struct {
@@ -234,7 +235,7 @@ func (s *Server) addTools(srv *sdk.Server, remote bool) {
 		func(ctx context.Context, req *sdk.CallToolRequest, in observeIn) (*sdk.CallToolResult, any, error) {
 			return render(s.session(req, remote).Observe(ctx, gateway.ObserveRequest{
 				Call:   gateway.Call{Device: strings.TrimSpace(in.Device), Progress: progress(ctx, req)},
-				WaitMS: in.WaitMS, Screenshot: in.Screenshot})), nil, nil
+				WaitMS: in.WaitMS, Screenshot: in.Screenshot, OCR: in.OCR})), nil, nil
 		})
 
 	sdk.AddTool(srv, &sdk.Tool{Name: "phone_tap", Title: "Tap",
