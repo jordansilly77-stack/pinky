@@ -45,7 +45,7 @@ What these mean for the design:
 | `springboard.go` | SpringBoard's alerts and banners over the app, as events |
 | `capture.go` | Elements the screenshot does not show (`not_in_screenshot`) |
 | `ax.go`, `caption.go`, `observe.go` | The fallback: the inspector walk, caption parsing into label, role and states, OCR placement, keyboard detection, the foreground app |
-| `ocr.go`, `ocr_darwin.go`, `ocr_other.go` | Vision text recognition through purego (no cgo); other OSes return `unsupported` |
+| `ocr.go` | Names for the shared OCR engine in `internal/ocr` (since 2026-11-08, shared with the Android driver): Vision through purego on macOS, Windows.Media.Ocr through WinRT on Windows, `unsupported` elsewhere; `ocrExtras` and `keyboardFromOCR` are `ocr.Extras` and `ocr.KeyboardTop` |
 | `screenshot.go`, `apps.go`, `lock.go`, `settle.go`, `provider.go`, `display_info.go` | The rest of the interface |
 | `diag.go`, `cmd/iosctl` | Diagnostics and the debugging command |
 | `version.go` | Which way to drive a phone, by its iOS version |

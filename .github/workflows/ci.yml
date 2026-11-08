@@ -120,8 +120,8 @@ jobs:
         shell: bash
         run: |
           go test ./...
-          # What the decoder and keyring tests did, rather than only "ok".
-          go test -count=1 -v -run 'TestDecodeTestStream|TestSecretService|TestCredential|TestHello' ./internal/video/ ./internal/secret/ | grep -E -e '--- |video_test.go|Windows Hello'
+          # What the decoder, keyring and OCR tests did, rather than only "ok".
+          go test -count=1 -v -run 'TestDecodeTestStream|TestSecretService|TestCredential|TestHello|TestRecognize|TestWindowsSetup' ./internal/video/ ./internal/secret/ ./internal/ocr/ | grep -E -e '--- |video_test.go|Windows Hello|ocr_test.go|winrt_windows_test.go'
 
       - name: Smoke run with fake phones
         shell: bash

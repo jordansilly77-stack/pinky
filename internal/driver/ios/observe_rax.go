@@ -794,30 +794,3 @@ func raxLabel(e raxElement, role string) string {
 	}
 	return label
 }
-
-// ocrExtras returns the OCR lines no element already shows, as OCR
-// elements: a line counts as shown when its center lies in an element whose
-// label contains its text.
-func ocrExtras(els []screen.Element, lines []ocrLine, w, h int) []screen.Element {
-	var out []screen.Element
-	for _, l := range lines {
-		text := strings.TrimSpace(l.Text)
-		if text == "" || l.Confidence < 0.3 {
-			continue
-		}
-		r := ocrRect(l, w, h)
-		c := r.Center()
-		nt := norm(text)
-		shown := false
-		for _, e := range els {
-			if e.Bounds.Contains(c) && strings.Contains(norm(e.Label), nt) {
-				shown = true
-				break
-			}
-		}
-		if !shown {
-			out = append(out, screen.Element{Role: screen.RoleText, Label: text, Source: screen.SourceOCR, Bounds: r})
-		}
-	}
-	return out
-}

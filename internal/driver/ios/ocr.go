@@ -1,17 +1,29 @@
 package ios
 
-// ocrLine is one line of text OCR found, with a box normalized to 0..1 from
-// the image's top-left corner.
-type ocrLine struct {
-	Text       string
-	Confidence float32
-	X, Y, W, H float64
-}
+import (
+	"github.com/DIYgod/pinky/internal/ocr"
+	"github.com/DIYgod/pinky/internal/screen"
+)
 
-type ocrOptions struct {
-	Fast      bool     // the fast recognizer: lower accuracy, no language correction
-	Languages []string // in priority order, e.g. "zh-Hans", "en-US"
-	// AutoLanguage lets Vision detect the language. It can load extra
-	// models on the fly, which has taken over ten seconds.
-	AutoLanguage bool
+// OCR is the shared engine in internal/ocr (Vision on macOS). These names
+// keep the driver's code as it was before the engine moved there.
+
+type ocrLine = ocr.Line
+
+type ocrOptions = ocr.Options
+
+// ocrLanguages are the languages Vision reads, in priority order.
+var ocrLanguages = ocr.Languages
+
+func recognizeText(img []byte, opt ocrOptions) ([]ocrLine, error) { return ocr.Recognize(img, opt) }
+
+func ocrRect(l ocrLine, w, h int) screen.Rect { return ocr.Rect(l, w, h) }
+
+// keyboardFromOCR finds an on-screen keyboard in OCR lines (ocr.KeyboardTop).
+func keyboardFromOCR(lines []ocrLine) (float64, bool) { return ocr.KeyboardTop(lines) }
+
+// ocrExtras returns the OCR lines no element already shows, as OCR
+// elements (ocr.Extras).
+func ocrExtras(els []screen.Element, lines []ocrLine, w, h int) []screen.Element {
+	return ocr.Extras(els, lines, w, h)
 }
