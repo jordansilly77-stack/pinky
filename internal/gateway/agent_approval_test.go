@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -220,5 +221,82 @@ func assertAgentHasNoControl(t *testing.T, g *Gateway, dev *demo.Device, name st
 	}
 	if ins := dev.Inputs(); len(ins) != 0 {
 		t.Fatalf("phone input: %+v", ins)
+	}
+}
+
+func TestAgentConnectKeyDoesNotMergeDifferentRequests(t *testing.T) {
+	var fromJSON string
+	if err := json.Unmarshal([]byte(`"a\u0000b\u001fc"`), &fromJSON); err != nil {
+		t.Fatal(err)
+	}
+	if fromJSON != "a\x00b\x1fc" {
+		t.Fatalf("JSON lost a control character: %q", fromJSON)
+	}
+
+	base := AgentInfo{Name: "Claude Code", Client: "claude-code 1.0"}
+	key := func(name, client, device, task string, apps []string, readOnly bool) string {
+		return agentConnectKey(AgentInfo{Name: name, Client: client}, ConnectRequest{
+			Call: Call{Device: device}, Task: task, Apps: apps, ReadOnly: readOnly,
+		})
+	}
+	same := []struct{ a, b string }{
+		{key(base.Name, base.Client, " pixel ", " Lunch ", nil, false), key(base.Name, base.Client, "pixel", "Lunch", []string{}, false)},
+		{key(base.Name, base.Client, "pixel", "Lunch", []string{"Dinely"}, true), key(base.Name, base.Client, "pixel", "Lunch", []string{"Dinely"}, true)},
+	}
+	for _, c := range same {
+		if c.a != c.b {
+			t.Fatalf("normalization changed:\n%q\n%q", c.a, c.b)
+		}
+	}
+	different := []struct{ a, b string }{
+		{key(base.Name, base.Client, "pixel\x00Lunch", "x", nil, false), key(base.Name, base.Client, "pixel", "Lunch\x00x", nil, false)},
+		{key(base.Name, base.Client, "pixel", "Lunch", []string{"a\x1fb"}, false), key(base.Name, base.Client, "pixel", "Lunch", []string{"a", "b"}, false)},
+		{key(base.Name, base.Client, "pixel", "Lunch\x00false", nil, true), key(base.Name, base.Client, "pixel", "Lunch", nil, false)},
+		{key("A\x00B", "C", "pixel", "Lunch", nil, false), key("A", "B\x00C", "pixel", "Lunch", nil, false)},
+		{key(base.Name, base.Client, "pixel", "Lunch", []string{"Dinely", "Clock"}, false), key(base.Name, base.Client, "pixel", "Lunch", []string{"Clock", "Dinely"}, false)},
+		{key(base.Name, base.Client, "pixel", "Lunch", nil, false), key(base.Name, base.Client, "pixel", "Lunch", nil, true)},
+	}
+	for _, c := range different {
+		if c.a == c.b {
+			t.Fatalf("different requests share one key:\n%q", c.a)
+		}
+	}
+}
+
+func TestAgentApprovalControlCharactersDoNotContinue(t *testing.T) {
+	g, dev := newTestGateway(t, func(o *Options) {
+		o.TrustNewAgents = false
+		o.MaxBlock = 40 * time.Millisecond
+		o.ApprovalTimeout = 3 * time.Second
+	})
+	s := g.OpenSession(agent)
+	t.Cleanup(s.Close)
+	res := s.Connect(context.Background(), ConnectRequest{
+		Call: Call{Device: "pixel"}, Task: "Lunch", Apps: []string{"a", "b"}, ReadOnly: true,
+	})
+	mustStatus(t, res, StatusPending)
+	id := res.ApprovalID
+	got := s.Connect(context.Background(), ConnectRequest{
+		Call: Call{Device: "pixel", ApprovalID: id}, Task: "Lunch", Apps: []string{"a\x1fb"}, ReadOnly: true,
+	})
+	if got.Error != ErrInvalidArgument || got.Status == StatusSettled {
+		t.Fatalf("joined app name continued the two-app request: %+v", got)
+	}
+	split := s.Connect(context.Background(), ConnectRequest{
+		Call: Call{Device: "pixel\x00Lunch", ApprovalID: id}, Task: "x", Apps: []string{"a", "b"}, ReadOnly: true,
+	})
+	if split.Error != ErrInvalidArgument || split.Status == StatusSettled {
+		t.Fatalf("split device and task continued the original: %+v", split)
+	}
+	assertAgentHasNoControl(t, g, dev, agent.Name)
+	if needs := g.Needs(); len(needs) != 1 || needs[0].ID != id {
+		t.Fatalf("card consumed: %+v", needs)
+	}
+	again := s.Connect(context.Background(), ConnectRequest{
+		Call: Call{Device: "pixel", ApprovalID: id}, Task: "Lunch", Apps: []string{"a", "b"}, ReadOnly: true,
+	})
+	mustStatus(t, again, StatusPending)
+	if again.ApprovalID != id {
+		t.Fatalf("continuation id %q", again.ApprovalID)
 	}
 }

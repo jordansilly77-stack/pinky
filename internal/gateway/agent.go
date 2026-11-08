@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -741,16 +742,30 @@ func agentConnectBinding(s *Session, req ConnectRequest) approval.Binding {
 	return approval.Binding{Session: s.id, Tool: "phone_connect", Args: digest(agentConnectKey(s.agent, req))}
 }
 
+// Each field is its byte length, a colon and its bytes. A NUL or U+001F
+// inside a name, device, task or app then stays inside that field.
 func agentConnectKey(a AgentInfo, req ConnectRequest) string {
-	return strings.Join([]string{
-		"agent",
-		a.Name,
-		a.Client,
-		strings.TrimSpace(req.Device),
-		strings.TrimSpace(req.Task),
-		fmt.Sprintf("%t", req.ReadOnly),
-		strings.Join(req.Apps, "\x1f"),
-	}, "\x00")
+	readOnly := "false"
+	if req.ReadOnly {
+		readOnly = "true"
+	}
+	apps := req.Apps
+	if apps == nil {
+		apps = []string{}
+	}
+	parts := []string{
+		"agent", a.Name, a.Client,
+		strings.TrimSpace(req.Device), strings.TrimSpace(req.Task), readOnly,
+		strconv.Itoa(len(apps)),
+	}
+	parts = append(parts, apps...)
+	var b strings.Builder
+	for _, part := range parts {
+		b.WriteString(strconv.Itoa(len(part)))
+		b.WriteByte(':')
+		b.WriteString(part)
+	}
+	return b.String()
 }
 
 func agentApprovalIDResult(id string, err error) *Result {
