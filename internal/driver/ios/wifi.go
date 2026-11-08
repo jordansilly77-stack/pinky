@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/DIYgod/pinky/internal/driver"
@@ -13,7 +14,8 @@ import (
 // iPhones and iPads over Wi-Fi (driver.WiFiFinder). usbmuxd lists a phone
 // over the network while it is on the same network as this computer and
 // was paired with it with Wi-Fi allowed (Finder's "Show this iPhone when
-// on Wi-Fi", Xcode's "Connect via network"). Everything Pinky uses runs
+// on Wi-Fi", Xcode's "Connect via network", or Pinky itself once the phone
+// trusted it on a cable: wifiallow.go). Everything Pinky uses runs
 // through that connection: lockdown, the tunnel, the screen stream, HID,
 // the accessibility services and the developer disk image.
 //
@@ -42,7 +44,13 @@ type wifiState struct {
 	dropped    map[string]time.Time
 	since      map[string]time.Time
 
+	// Wi-Fi connections Pinky turned on, or found on, for phones on a
+	// cable (wifiallow.go), and the turning on that runs.
+	allowed  map[string]wifiAllowed
+	allowing sync.WaitGroup
+
 	namesFn func(ctx context.Context, e goios.DeviceEntry) (phoneNames, error) // for tests: readNames
+	allowFn func(ctx context.Context, e goios.DeviceEntry) (bool, error)       // for tests: allowWiFiConnections
 }
 
 // foundPhone is what was read of a phone found over Wi-Fi only: the attach

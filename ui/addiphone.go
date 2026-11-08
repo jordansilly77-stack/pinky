@@ -215,6 +215,9 @@ func (a *app) addIPhoneSteps(c *mg.Context) {
 			guideText(c, locales.AddPhoneIPhoneStepTrustDetail())
 			if wifi {
 				guideNote(c, locales.AddPhoneIPhoneStepTrustCable())
+				// Pinky turns on the phone's Wi-Fi connection once it
+				// trusts this computer (internal/driver/ios/wifiallow.go).
+				guideNote(c, locales.AddPhoneIPhoneStepTrustWiFiOn())
 			}
 			guideWaiting(c, locales.AddPhoneIPhoneStepTrustWaiting())
 		})

@@ -112,7 +112,7 @@ Checked on the iPhone 13 mini (iOS 27.0.1): Pinky mounting Xcode's image itself 
 
 #### iPhones and iPads over Wi-Fi
 
-Pinky also uses an iPhone or iPad over Wi-Fi while it is on the same Wi-Fi as the computer, and the computer lists it there, which it does once the phone was paired with it with Wi-Fi allowed (Finder's **Show this iPhone when on Wi-Fi**, or Xcode). It is on by default; **Settings › Phones › Use iPhones and iPads over Wi-Fi** turns it off.
+Pinky also uses an iPhone or iPad over Wi-Fi while it is on the same Wi-Fi as the computer, and the computer lists it there, which it does once Wi-Fi connections are on for the phone. Pinky turns them on when you plug the phone in and it trusts the computer: it is the same setting as Finder's **Show this iPhone when on Wi-Fi**, so a phone already set up that way stays as it is. It is on by default; **Settings › Phones › Use iPhones and iPads over Wi-Fi** turns it off, which leaves the phones' setting alone (Finder turns it off).
 
 - An iPhone or iPad Pinky has used keeps working when you unplug it, as the same phone with its settings: Pinky moves it to Wi-Fi by itself, and back to the cable when you plug it in, and an agent's task goes on; its calls wait a few seconds meanwhile.
 - One Pinky has not used, such as a family member's iPad paired with this computer, shows as **Found on Wi-Fi**. Pinky reads its name, model and iOS version and does nothing else, and agents don't see it, until you choose **Use**, which sets it up over Wi-Fi, or **Ignore**, which keeps it off the list until you plug it in.

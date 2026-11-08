@@ -163,6 +163,7 @@ func (p *Provider) List(ctx context.Context) ([]driver.Info, error) {
 		}()
 	}
 	wg.Wait()
+	p.allowWiFi(entries, out, listed)
 	p.forgetExcept(entries)
 	kept := out[:0]
 	ids := map[string]bool{}
@@ -277,6 +278,11 @@ func (p *Provider) forgetExcept(entries []goios.DeviceEntry) {
 	for id := range p.known {
 		if !listed[id] {
 			delete(p.known, id)
+		}
+	}
+	for id, a := range p.wifi.allowed {
+		if !listed[id] && !a.running {
+			delete(p.wifi.allowed, id)
 		}
 	}
 	for id, f := range p.wifi.found {

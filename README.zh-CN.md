@@ -112,7 +112,7 @@ Pinky 会自己准备好 iPhone，「添加手机 › iPhone」会一步步带�
 
 #### 通过 Wi-Fi 使用 iPhone 和 iPad
 
-iPhone 或 iPad 和电脑在同一个 Wi-Fi 下，并且电脑在 Wi-Fi 上列出了它时，Pinky 也会通过 Wi-Fi 使用它。手机以允许 Wi-Fi 的方式和这台电脑配对过（在「访达」里勾选在 Wi-Fi 上显示这台 iPhone 的选项，英文为 Show this iPhone when on Wi-Fi；或者用过 Xcode）之后，电脑就会列出它。这项功能默认打开；在「设置 › 手机 › 通过 Wi-Fi 使用 iPhone 和 iPad」里可以关掉。
+iPhone 或 iPad 和电脑在同一个 Wi-Fi 下，并且电脑在 Wi-Fi 上列出了它时，Pinky 也会通过 Wi-Fi 使用它。手机的 Wi-Fi 连接打开后，电脑就会列出它。你插上手机并让它信任这台电脑后，Pinky 会自己打开它的 Wi-Fi 连接：这和在「访达」里勾选在 Wi-Fi 上显示这台 iPhone 的选项（英文为 Show this iPhone when on Wi-Fi）是同一个设置，已经这样设置过的手机保持不变。这项功能默认打开；在「设置 › 手机 › 通过 Wi-Fi 使用 iPhone 和 iPad」里可以关掉，关掉不会改动手机上的这个设置（可以在「访达」里关掉）。
 
 - Pinky 用过的 iPhone 或 iPad 拔掉线后仍可继续使用，还是同一台手机、同样的设置：Pinky 会自己把它切到 Wi-Fi，插回线时再切回有线，Agent 的任务会继续；切换期间它的调用会等几秒。
 - Pinky 没用过的，比如家人和这台电脑配对过的 iPad，会显示为「在 Wi-Fi 上发现」。在你选择「使用」（Pinky 会通过 Wi-Fi 完成准备）或「忽略」（插上线之前它都不会再出现在列表里）之前，Pinky 只读取它的名字、型号和 iOS 版本，不做任何其他事，Agent 也看不到它。

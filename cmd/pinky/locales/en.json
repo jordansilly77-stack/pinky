@@ -488,7 +488,7 @@
   "@addPhoneIPhoneStepPlugDetail": {
     "description": "Add phone › iPhone, the step list: under the plug-in step."
   },
-  "addPhoneIPhoneStepPlugWiFi": "If it's on the same Wi-Fi as this computer and was paired with it before, in Finder or Xcode, Pinky finds it there and asks you first, no cable needed.",
+  "addPhoneIPhoneStepPlugWiFi": "Once it trusts this computer, Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” does, so it keeps working when you unplug it while it's on the same Wi-Fi. One already connected to this computer over Wi-Fi shows up here without the cable, and Pinky asks you first.",
   "@addPhoneIPhoneStepPlugWiFi": {
     "description": "Add phone › iPhone: a note under the plug-in step while Pinky uses iPhones over Wi-Fi."
   },
@@ -527,6 +527,10 @@
   "addPhoneIPhoneStepTrustWaiting": "Waiting for the iPhone to trust this computer…",
   "@addPhoneIPhoneStepTrustWaiting": {
     "description": "Add phone › iPhone, the step list: next to a spinner under the Trust step."
+  },
+  "addPhoneIPhoneStepTrustWiFiOn": "Then Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” does. Turning off Use iPhones and iPads over Wi-Fi leaves it on; Finder can turn it off.",
+  "@addPhoneIPhoneStepTrustWiFiOn": {
+    "description": "Add phone › iPhone: a note under the trust step while Pinky uses iPhones over Wi-Fi: Pinky turns on the iPhone's Wi-Fi connection (lockdown's EnableWifiConnections, Finder's checkbox) once it trusts the computer."
   },
   "addPhoneIPhoneStepUnlock": "Unlock the iPhone so Pinky can finish.",
   "@addPhoneIPhoneStepUnlock": {
@@ -2396,7 +2400,7 @@
   "@flyoutUnlock": {
     "description": "Menu bar flyout: the action at the end of a locked phone's Needs you row; a click opens the phone to unlock it."
   },
-  "foundDetail": "It's on the same Wi-Fi as this computer and was paired with it before, in Finder or Xcode. Pinky hasn't used it, so it leaves it alone until you say it's yours: it doesn't connect to it, change anything on it or let agents use it.",
+  "foundDetail": "It's on the same Wi-Fi as this computer and was set up before to connect to it over Wi-Fi, in Finder, Xcode or Pinky. Pinky hasn't used it, so it leaves it alone until you say it's yours: it doesn't connect to it, change anything on it or let agents use it.",
   "@foundDetail": {
     "description": "Under foundTitle, and in Add phone and the checkup: why Pinky waits for the person."
   },
@@ -6006,7 +6010,7 @@
   "@settingsPhonesWiFi": {
     "description": "Settings › Phones: the switch that lets Pinky reach iPhones and iPads over Wi-Fi when this computer finds them there, besides the cable."
   },
-  "settingsPhonesWiFiDesc": "An iPhone or iPad you use with Pinky keeps working when you unplug it, while it's on the same Wi-Fi as this computer. Pinky asks before it uses one it finds there. Over Wi-Fi the live picture is less smooth and each step is slower.",
+  "settingsPhonesWiFiDesc": "An iPhone or iPad you use with Pinky keeps working when you unplug it, while it's on the same Wi-Fi as this computer: once one trusts this computer on a cable, Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” does. Pinky asks before it uses one it finds there. Over Wi-Fi the live picture is less smooth and each step is slower.",
   "@settingsPhonesWiFiDesc": {
     "description": "Settings › Phones: under settingsPhonesWiFi."
   },

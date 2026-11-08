@@ -1495,14 +1495,14 @@ func (msgs Messages) AddPhoneIPhoneStepPlugDetail() string {
 	return Catalog.Format(msgs.locale, "addPhoneIPhoneStepPlugDetail", nil)
 }
 
-// AddPhoneIPhoneStepPlugWiFi says "If it's on the same Wi-Fi as this computer and was paired with it before, in Finder or Xcode, Pinky finds it there an…"
+// AddPhoneIPhoneStepPlugWiFi says "Once it trusts this computer, Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” d…"
 // in the language the app shows.
 //
 // Add phone › iPhone: a note under the plug-in step while Pinky uses
 // iPhones over Wi-Fi.
 func AddPhoneIPhoneStepPlugWiFi() string { return In(i18n.Locale()).AddPhoneIPhoneStepPlugWiFi() }
 
-// AddPhoneIPhoneStepPlugWiFi says "If it's on the same Wi-Fi as this computer and was paired with it before, in Finder or Xcode, Pinky finds it there an…"
+// AddPhoneIPhoneStepPlugWiFi says "Once it trusts this computer, Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” d…"
 // in the language of msgs.
 //
 // Add phone › iPhone: a note under the plug-in step while Pinky uses
@@ -1659,6 +1659,26 @@ func AddPhoneIPhoneStepTrustWaiting() string {
 // step.
 func (msgs Messages) AddPhoneIPhoneStepTrustWaiting() string {
 	return Catalog.Format(msgs.locale, "addPhoneIPhoneStepTrustWaiting", nil)
+}
+
+// AddPhoneIPhoneStepTrustWiFiOn says "Then Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” does. Turning off Use iPho…"
+// in the language the app shows.
+//
+// Add phone › iPhone: a note under the trust step while Pinky uses
+// iPhones over Wi-Fi: Pinky turns on the iPhone's Wi-Fi connection
+// (lockdown's EnableWifiConnections, Finder's checkbox) once it trusts the
+// computer.
+func AddPhoneIPhoneStepTrustWiFiOn() string { return In(i18n.Locale()).AddPhoneIPhoneStepTrustWiFiOn() }
+
+// AddPhoneIPhoneStepTrustWiFiOn says "Then Pinky turns on its Wi-Fi connection, as Finder's “Show this iPhone when on Wi-Fi” does. Turning off Use iPho…"
+// in the language of msgs.
+//
+// Add phone › iPhone: a note under the trust step while Pinky uses
+// iPhones over Wi-Fi: Pinky turns on the iPhone's Wi-Fi connection
+// (lockdown's EnableWifiConnections, Finder's checkbox) once it trusts the
+// computer.
+func (msgs Messages) AddPhoneIPhoneStepTrustWiFiOn() string {
+	return Catalog.Format(msgs.locale, "addPhoneIPhoneStepTrustWiFiOn", nil)
 }
 
 // AddPhoneIPhoneStepUnlock says "Unlock the iPhone so Pinky can finish."
@@ -7041,14 +7061,14 @@ func (msgs Messages) FlyoutUnlock() string {
 	return Catalog.Format(msgs.locale, "flyoutUnlock", nil)
 }
 
-// FoundDetail says "It's on the same Wi-Fi as this computer and was paired with it before, in Finder or Xcode. Pinky hasn't used it, so i…"
+// FoundDetail says "It's on the same Wi-Fi as this computer and was set up before to connect to it over Wi-Fi, in Finder, Xcode or Pinky.…"
 // in the language the app shows.
 //
 // Under foundTitle, and in Add phone and the checkup: why Pinky waits for
 // the person.
 func FoundDetail() string { return In(i18n.Locale()).FoundDetail() }
 
-// FoundDetail says "It's on the same Wi-Fi as this computer and was paired with it before, in Finder or Xcode. Pinky hasn't used it, so i…"
+// FoundDetail says "It's on the same Wi-Fi as this computer and was set up before to connect to it over Wi-Fi, in Finder, Xcode or Pinky.…"
 // in the language of msgs.
 //
 // Under foundTitle, and in Add phone and the checkup: why Pinky waits for
@@ -16431,13 +16451,13 @@ func (msgs Messages) SettingsPhonesWiFi() string {
 	return Catalog.Format(msgs.locale, "settingsPhonesWiFi", nil)
 }
 
-// SettingsPhonesWiFiDesc says "An iPhone or iPad you use with Pinky keeps working when you unplug it, while it's on the same Wi-Fi as this computer.…"
+// SettingsPhonesWiFiDesc says "An iPhone or iPad you use with Pinky keeps working when you unplug it, while it's on the same Wi-Fi as this computer:…"
 // in the language the app shows.
 //
 // Settings › Phones: under settingsPhonesWiFi.
 func SettingsPhonesWiFiDesc() string { return In(i18n.Locale()).SettingsPhonesWiFiDesc() }
 
-// SettingsPhonesWiFiDesc says "An iPhone or iPad you use with Pinky keeps working when you unplug it, while it's on the same Wi-Fi as this computer.…"
+// SettingsPhonesWiFiDesc says "An iPhone or iPad you use with Pinky keeps working when you unplug it, while it's on the same Wi-Fi as this computer:…"
 // in the language of msgs.
 //
 // Settings › Phones: under settingsPhonesWiFi.

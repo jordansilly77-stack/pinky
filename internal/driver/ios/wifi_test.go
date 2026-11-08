@@ -359,3 +359,106 @@ func TestWiFiDozing(t *testing.T) {
 		t.Fatalf("unplugged: %+v", got)
 	}
 }
+
+// allowCounter records the phones Pinky turned Wi-Fi connections on for.
+type allowCounter struct {
+	mu    sync.Mutex
+	calls map[string]int
+	err   error
+}
+
+func (a *allowCounter) fn(_ context.Context, e goios.DeviceEntry) (bool, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.calls[e.Properties.SerialNumber]++
+	return a.err == nil, a.err
+}
+
+func (a *allowCounter) count(id string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.calls[id]
+}
+
+// TestWiFiAllowedOnCable: while Pinky uses phones over Wi-Fi, it turns on
+// Wi-Fi connections (Finder's "Show this iPhone when on Wi-Fi") for a phone
+// on a cable that trusts this computer, once per attach; not with the
+// switch off, not for a phone that does not trust it yet, not over Wi-Fi,
+// not for one the person removed; again a minute after it failed.
+func TestWiFiAllowedOnCable(t *testing.T) {
+	w := newWiFiProvider(entry("phone", 3, "USB"), entry("new", 4, "USB"), entry("ipad", 7, "Network"), entry("gone", 5, "USB"))
+	a := &allowCounter{calls: map[string]int{}}
+	w.wifi.allowFn = a.fn
+	trusts := map[string]bool{"phone": true, "ipad": true, "gone": true}
+	inspect := w.inspectFn
+	w.inspectFn = func(ctx context.Context, e goios.DeviceEntry) driver.Info {
+		info := inspect(ctx, e)
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if !trusts[info.ID] {
+			return driver.Info{ID: info.ID, Platform: driver.IOS, Connection: info.Connection,
+				State: driver.StateUnauthorized, Setup: driver.SetupTrust}
+		}
+		return info
+	}
+	list := func() {
+		t.Helper()
+		listed(t, w.Provider)
+		w.wifi.allowing.Wait()
+	}
+
+	// The switch off: the phone's value is left alone.
+	list()
+	if n := a.count("phone"); n != 0 {
+		t.Fatalf("with Wi-Fi off: %d", n)
+	}
+	w.SetWiFi(true)
+	w.UseOverWiFi("ipad")
+	w.Forget("gone")
+	list()
+	list()
+	if a.count("phone") != 1 || a.count("new") != 0 || a.count("ipad") != 0 || a.count("gone") != 0 {
+		t.Fatalf("calls %v; want the trusted phone on the cable once", a.calls)
+	}
+	// It trusts this computer now: on the same attach, once it does.
+	w.mu.Lock()
+	trusts["new"] = true
+	w.mu.Unlock()
+	w.after(time.Hour) // inspected again: it was not online
+	list()
+	if a.count("new") != 1 {
+		t.Fatalf("after trusting: %v", a.calls)
+	}
+	// Plugged in again: looked at again.
+	w.set(entry("phone", 11, "USB"))
+	list()
+	if a.count("phone") != 2 {
+		t.Fatalf("plugged in again: %v", a.calls)
+	}
+	// A failure is tried again after wifiAllowRetry, not every List.
+	a.mu.Lock()
+	a.err = errors.New("no answer")
+	a.mu.Unlock()
+	w.set(entry("phone", 12, "USB"))
+	list()
+	list()
+	if a.count("phone") != 3 {
+		t.Fatalf("after a failure: %v", a.calls)
+	}
+	a.mu.Lock()
+	a.err = nil
+	a.mu.Unlock()
+	w.after(wifiAllowRetry)
+	list()
+	list()
+	if a.count("phone") != 4 {
+		t.Fatalf("a minute after the failure: %v", a.calls)
+	}
+	// Turning the switch off changes nothing on the phone.
+	w.SetWiFi(false)
+	w.set(entry("phone", 13, "USB"))
+	list()
+	if a.count("phone") != 4 {
+		t.Fatalf("with Wi-Fi turned off: %v", a.calls)
+	}
+}
